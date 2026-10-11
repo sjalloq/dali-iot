@@ -1,18 +1,13 @@
-# Site file
+# Site file reference
 
-`dali-iot` keeps your names for the gateway's devices and zones, and your
-schedules, triggers and sequences, in a YAML
-site file, `site/site.yaml` by default. The `site/` directory is git-ignored
-because the file describes one installation. `--site PATH` points elsewhere.
+The site file describes one installation: devices by DALI address, zones,
+schedules, triggers and sequences. `site init` writes it, `plan` and `apply`
+keep the gateway matching it, `site check` keeps it matching the bus. Default
+path `site/site.yaml`, git-ignored here because it describes one house;
+`--site PATH` points elsewhere. [Getting started](getting-started.md) shows
+the loop, [examples](examples.md) show typical edits.
 
-```
-dali-iot site init     # starting file: gateway's devices, zones, automations + serials from the bus
-dali-iot site check    # does the file still describe the bus? asks every device (read-only)
-dali-iot plan          # what apply would change (read-only)
-dali-iot apply         # make the gateway match the file
-```
-
-## Format
+## Layout
 
 Devices are keyed by DALI line and short address, the only identifier the
 gateway shares with the bus. The gateway's own device id is looked up at plan
@@ -41,24 +36,25 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
-`dali-iot site init` also reads each device's memory bank 0 over the
-gateway's WebSocket and records `serial`, `product` (the Lunatone article
-number with its suffix) and, for multi-channel devices that share one serial,
-`unit`. These are informational: `plan` ignores them, but they say *which*
-device an address was, which nothing in the REST API does. They are always
-read from the bus, never copied from an older file, because a serial is only
-true of the address it was read at. `dali-iot bus identify` prints the same
-without writing a file.
+### Device identity
 
-To find out which light an address is, `dali-iot device identify 7` blinks
-it off and on twice and restores it.
+`site init` also records, per device, `serial`, `product` (the Lunatone
+article number with its suffix) and, for multi-channel devices that share
+one serial, `unit`, all read from the device's memory bank 0 over the bus.
+They are informational: `plan` ignores them. They say *which* device an
+address was, which nothing in the REST API does, and `site check` uses them
+to tell a move from a loss. They are always read from the bus, never copied
+from an older file, because a serial is only true of the address it was read
+at.
 
-Zones and schedules refer to devices by short address, never by name: an
+### References
+
+Zones and automations refer to devices by short address, never by name: an
 integer is an address on line 0, and `"line/address"` reaches other lines.
 Names are labels you can change freely without breaking anything. Every
 referenced address must appear under `lines`, so the type check covers it.
 
-### Groups and zones
+## Groups and zones
 
 A DALI *group* (0–15) is membership stored in the device itself; every
 device lists the groups it belongs to under `groups`, and changing that list
@@ -68,7 +64,7 @@ group only appears in the file as a zone if someone created a zone for it,
 so a group can have members and still have no zone. To control such a group
 as a unit, add a zone that targets it.
 
-### Schedules
+## Schedules
 
 ```yaml
 schedules:
@@ -104,7 +100,7 @@ schedules:
 A date range (`activePeriod`) or day-of-month list (`activeDays`) on the
 gateway is not modelled: it is neither written nor compared.
 
-### Triggers
+## Triggers
 
 A trigger mirrors what happens to its sources onto its targets. When a
 source receives a control command on the bus, from a push-button coupler
@@ -127,7 +123,7 @@ Sources are written to the gateway as bus addresses (`d16gear`/`d16group`),
 so the file never needs gateway ids. Targets take the same keys as a zone or
 schedule: `devices`, `zones`, `groups`, `broadcast`.
 
-### Sequences
+## Sequences
 
 A sequence is an ordered list of steps. Each step has targets, an action in
 the same vocabulary as a schedule, and a `delay` in seconds that the gateway
@@ -150,14 +146,14 @@ sequences:
         enabled: false      # a step can be parked without deleting it
 ```
 
-Sequences are stored, not run, by `apply`. `dali-iot sequence run NAME`
-starts one and `sequence stop NAME` stops a looping one.
+Sequences are stored, not run, by `apply`. `sequence run NAME` starts one
+and `sequence stop NAME` stops a looping one.
 
 The gateway's two other automation kinds, circadian curves and status
 queries, are not modelled. They are left alone on the gateway and never
 appear in the file.
 
-### Types
+## Types
 
 `type` names what the gateway reports in `daliTypes`:
 
@@ -202,32 +198,30 @@ old record stays, and the next scan adds a fresh record at the new address
 with a factory name and no zone or schedule memberships. Nothing in the REST
 API tells a stale record from a live device that is switched off.
 
-`dali-iot site check` asks the bus instead. It sweeps every short address on
-each line, reads the serial and unit index from each device that answers,
-and compares with the file and with the gateway's records:
+`site check` asks the bus instead. It sweeps every short address on each
+line, reads the serial and unit index from each device that answers, and
+compares with the file and with the gateway's records:
 
-- `moved`: a serial from the file answers at another address. The finding
-  gives the exact edit.
-- `lost`: the file's device is not on the bus at all.
-- `replaced`: the address answers, but with a different serial.
-- `new`: a device on the bus that the file does not know.
-- `unknown`: the file entry has no serial to compare, so only presence was
-  checked; `site init` records serials.
-- `stale`: a gateway record at an address where nothing answers;
-  `apply --prune` deletes it.
-- `unscanned`: a device on the bus the gateway has no record of;
-  `gateway rescan` adds it.
+| finding | meaning |
+|---|---|
+| `moved` | a serial from the file answers at another address; the finding gives the exact edit |
+| `lost` | the file's device is not on the bus at all |
+| `replaced` | the address answers, but with a different serial |
+| `new` | a device on the bus that the file does not know |
+| `unknown` | the entry has no serial, so only presence was checked |
+| `stale` | a gateway record at an address where nothing answers; `apply --prune` deletes it |
+| `unscanned` | a device on the bus the gateway has no record of; `gateway rescan` adds it |
 
-It exits 1 when anything differs. It takes about half a minute for a line:
-one query per address, then a bank read per device. `--no-sweep` skips the
-sweep and reads only the gateway's addresses.
+It exits 1 when anything differs. The workflow is: change the address,
+`site check`, make the edit it names, `gateway rescan`, then `plan` and
+`apply --prune`. Zone and automation targets follow, because they are
+resolved from addresses when the change runs; the file is what restores
+names and memberships, since the gateway does not carry them over. A worked
+run is in the [examples](examples.md#after-readdressing-with-a-commissioning-tool).
 
-The readdress workflow is therefore: change the address, `site check`, make
-the edit it names, `gateway rescan`, then `plan` and `apply --prune`. Zone and
-schedule targets follow, because they are resolved from addresses when the
-change runs. The file is what restores names and memberships, since the
-gateway does not carry them over.
+## Scope
 
 The site file covers what the REST API covers: control gear, meaning lamps
 and relays. Control devices such as push-button couplers are not visible to
-the gateway's REST API and are not part of this file.
+the gateway's REST API and are not part of this file; see
+[the bus and the gateway's two interfaces](bus.md).

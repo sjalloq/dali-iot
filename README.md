@@ -1,8 +1,10 @@
 # dali-iot
 
-Configure and drive a Lunatone DALI-2 IoT gateway over its REST API: an
-intent model for house-level automations, YAML config with `dump`/`plan`/`apply`,
-and a small web UI. No cloud subscription needed.
+Configure and drive a Lunatone DALI-2 IoT gateway from the command line,
+without the cloud subscription. One YAML file describes the installation by
+DALI address; `plan` and `apply` keep the gateway matching it; short verbs
+control lights for scripts. Serials are read over the gateway's WebSocket so
+readdressing is survivable.
 
 ```
 source sourceme
@@ -21,4 +23,5 @@ dali-iot sequence run evening  # start a stored sequence
 dali-iot gateway spec          # download the gateway's OpenAPI spec (then: make models)
 ```
 
-Docs: https://sjalloq.github.io/dali-iot/ (built with `make docs` → `docs/build/html/`).
+Docs: https://sjalloq.github.io/dali-iot/ — getting started, command reference, examples, site file format.
+Built with `make docs` into `docs/build/html/`.

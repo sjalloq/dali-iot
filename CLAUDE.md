@@ -42,7 +42,7 @@ This file is how to work here.
   Its header names the spec file, and so the firmware version, it came from
 - `spec/` — git-ignored; `dali-iot gateway spec` downloads `openapi-<firmware>.json` here
 - `tests/` — pytest (test_cli.py drives the commands with click's runner over the fake session); `conftest.py` has a fake session, no gateway needed
-- `docs/` — Sphinx (MyST, furo); `docs/site-file.md` the site format (devices, zones, schedules), `docs/gateway-api.md` API gotchas
+- `docs/` — Sphinx (MyST, furo): index (what it is), getting-started, commands (reference), examples, bus (background), site-file (format reference), gateway-api (protocol facts)
 - `site/` — git-ignored; the user's own site file lives here
 
 ## Commands

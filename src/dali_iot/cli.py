@@ -29,7 +29,7 @@ def _trace(method: str, url: str, req: Any, status: int, resp: Any) -> None:
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--url", help="Gateway base URL, e.g. http://10.0.0.239 (else from config)")
 @click.option("--trace", is_flag=True, help="Log every request and response to stderr")
-@click.option("--timeout", default=5.0, show_default=True)
+@click.option("--timeout", default=5.0, show_default=True, help="Seconds to wait for the gateway")
 @click.pass_context
 def main(ctx: click.Context, url: str | None, trace: bool, timeout: float) -> None:
     ctx.ensure_object(dict)
@@ -61,6 +61,7 @@ def gateway() -> None:
 @gateway.command("set-url")
 @click.argument("url")
 def gateway_set_url(url: str) -> None:
+    """Remember the gateway\'s URL in ~/.config/dali-iot/config.toml."""
     path = config.save_url(url.rstrip("/"))
     click.echo(f"saved {url} to {path}")
 
@@ -68,6 +69,7 @@ def gateway_set_url(url: str) -> None:
 @gateway.command("get-url")
 @click.pass_context
 def gateway_get_url(ctx: click.Context) -> None:
+    """Print the gateway URL in use and where it came from."""
     try:
         url, source = config.resolve_url(ctx.obj["url"])
     except config.NoGatewayError as e:
@@ -122,6 +124,7 @@ def gateway_spec(ctx: click.Context, out: Path) -> None:
 @gateway.command("info")
 @click.pass_context
 def gateway_info(ctx: click.Context) -> None:
+    """The gateway\'s own details: name, firmware, lines, serial."""
     click.echo(json.dumps(_client(ctx).info(), indent=2))
 
 
@@ -322,7 +325,7 @@ def _print_plan(changes: list[planner.Change]) -> int:
 @click.option(
     "--prune",
     is_flag=True,
-    help="Also delete device records, zones and schedules that are not in the site file",
+    help="Also delete device records, zones and automations that are not in the site file",
 )
 @click.pass_context
 def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
@@ -337,7 +340,7 @@ def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
 @click.option(
     "--prune",
     is_flag=True,
-    help="Also delete device records, zones and schedules that are not in the site file",
+    help="Also delete device records, zones and automations that are not in the site file",
 )
 @click.option("--yes", "-y", is_flag=True, help="Apply without asking")
 @click.pass_context

@@ -1,7 +1,19 @@
 # Gateway API notes
 
-Things the gateway's OpenAPI spec (`/openapi.json`, firmware 1.12.1) does not tell you.
-Download it with `dali-iot gateway spec`.
+Facts about the gateway's interfaces that its documentation does not state,
+collected while building the tool. Firmware 1.12.1 unless noted.
+
+## The OpenAPI spec
+
+The gateway publishes its own API description at `/openapi.json` and an
+interactive page at `http://<gateway>/docs`. `dali-iot gateway spec`
+downloads the spec into `spec/openapi-<firmware>.json`; the directory is
+git-ignored because the document is Lunatone's and belongs to one firmware
+version. Users never need it: the pydantic models generated from it ship
+with the package. Contributors regenerate them with `make models`, which
+takes the newest file in `spec/` or `SPEC=path`; the header of
+`api_models.py` records which spec it came from, so a diff after a firmware
+update shows what changed in the API.
 
 ## Scheduler actions
 
@@ -53,9 +65,35 @@ plural one with a wrapper key:
 | trigger | `/automations/triggerAction` | `/automations/triggerActions` | `triggerActions` |
 | circadian | `/automations/circadian` | `/automations/circadians` | `circadians` |
 
-## Ids
+## Device records and ids
 
-Gateway device id = DALI short address + 1.
+A device record is created the first time a scan finds control gear at a
+line and address, and its id is the next free integer, so on a freshly
+commissioned line id = short address + 1. The record is never reconciled
+with the bus afterwards: see *Scans* below. `PUT /device/{id}`
+takes `name` and `groups`; `groups` is written to the lamp, `name` exists
+only in the gateway's database.
+
+## Scans
+
+`POST /dali/scan` takes `newInstallation` and `noAddressing`:
+
+| newInstallation | noAddressing | effect |
+|---|---|---|
+| true | false | deletes every device record, readdresses the whole bus |
+| false | false | adds unaddressed devices with new addresses |
+| false | true | reloads the device list; nothing is readdressed |
+
+Only the last is safe to run casually, and it is what `gateway rescan` runs.
+Poll `GET /dali/scan` until `status` is `done`; the reply carries the scan
+`id`, so a stale `done` from an earlier scan can be told from the new one.
+
+After a device is readdressed elsewhere and the bus rescanned, the gateway
+keeps the old record (its `available` flag stays `true` and its status byte
+looks like a lamp that is off) and creates a new one with a new id, a
+factory name and no zone or automation memberships. Records expose no serial
+number, GTIN or firmware version. `DELETE /device/{id}` removes only the
+record, never anything in the device.
 
 ## WebSocket
 
