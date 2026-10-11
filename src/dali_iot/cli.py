@@ -296,12 +296,76 @@ def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:
             click.echo(f"applied {c.op} {c.what}", err=True)
 
 
-# --- devices ---
+# --- control, by noun: device ADDRESS | zone NAME | group N | broadcast ---
+
+
+def _device_at(c: Client, address: str) -> dict:
+    """The gateway record for an address reference like ``7`` or ``1/7``."""
+    try:
+        line, addr = sitefile.parse_ref(int(address) if address.isdigit() else address)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from None
+    for d in c.devices():
+        if int(d.get("line", 0)) == line and d.get("address") == addr:
+            return d
+    raise click.ClickException(f"nothing at line {line} A{addr} on the gateway")
+
+
+def _zone_named(c: Client, zone: str) -> dict:
+    zones = c.zones()
+    for z in zones:
+        if z.get("name") == zone:
+            return z
+    raise click.ClickException(
+        f"no zone named {zone!r} (have: {', '.join(str(z.get('name')) for z in zones)})"
+    )
+
+
+def _fade_option(f):
+    return click.option("--fade", default=0.0, help="Fade seconds for dimmers")(f)
+
+
+def _level_option(f):
+    return click.option("--level", default=100, show_default=True, help="Dim level 0-100")(f)
+
+
+def _verbs(group: click.Group, target_help: str, send) -> None:
+    """Add on/off/recall to a noun group. ``send(ctx, target, features)`` does the request."""
+
+    @group.command("on")
+    @click.argument("target", metavar=target_help)
+    @_level_option
+    @_fade_option
+    @click.pass_context
+    def _on(ctx: click.Context, target: str, level: int, fade: float) -> None:
+        """Switch on."""
+        send(ctx, target, on_features(level, fade))
+
+    @group.command("off")
+    @click.argument("target", metavar=target_help)
+    @_fade_option
+    @click.pass_context
+    def _off(ctx: click.Context, target: str, fade: float) -> None:
+        """Switch off."""
+        send(ctx, target, off_features(fade))
+
+    @group.command("recall")
+    @click.argument("target", metavar=target_help)
+    @click.argument("scene", type=int)
+    @_fade_option
+    @click.pass_context
+    def _recall(ctx: click.Context, target: str, scene: int, fade: float) -> None:
+        """Recall a scene (0-15)."""
+        feats = {"sceneWithFade": {"scene": scene, "fadeTime": fade}} if fade > 0 else {"scene": scene}
+        send(ctx, target, feats)
 
 
 @main.group()
 def device() -> None:
-    """Single devices, by DALI address."""
+    """One device, by DALI address (7, or 1/7 for line 1)."""
+
+
+_verbs(device, "ADDRESS", lambda ctx, t, f: (c := _client(ctx)).control_device(_device_at(c, t)["id"], f))
 
 
 @device.command("identify")
@@ -310,93 +374,73 @@ def device() -> None:
 @click.option("--pause", default=0.7, show_default=True, help="Seconds between steps")
 @click.pass_context
 def device_identify(ctx: click.Context, address: str, times: int, pause: float) -> None:
-    """Blink the light at ADDRESS (7, or 1/7 for line 1) so you can see which one it is.
+    """Blink the light at ADDRESS so you can see which one it is.
 
     Switches it off and on a couple of times, then restores its previous state.
     """
-    try:
-        line, addr = sitefile.parse_ref(int(address) if address.isdigit() else address)
-    except ValueError as e:
-        raise click.UsageError(str(e)) from None
     c = _client(ctx)
-    match = [d for d in c.devices() if int(d.get("line", 0)) == line and d.get("address") == addr]
-    if not match:
-        raise click.ClickException(f"nothing at line {line} A{addr} on the gateway")
-    d = match[0]
+    d = _device_at(c, address)
     click.echo(
-        f"blinking line {line} A{addr} {d.get('name')!r} ({sitefile.type_name(d.get('daliTypes') or [])})...",
+        f"blinking line {d.get('line', 0)} A{d['address']} {d.get('name')!r} "
+        f"({sitefile.type_name(d.get('daliTypes') or [])})...",
         err=True,
     )
     c.blink_device(d["id"], times=times, pause=pause)
     click.echo("restored", err=True)
 
 
-# --- scriptable verbs ---
+@main.group()
+def zone() -> None:
+    """A gateway zone, by name."""
 
 
-@main.command("all-off")
-@click.option("--fade", default=0.0, help="Fade seconds for dimmers")
+_verbs(zone, "ZONE", lambda ctx, t, f: (c := _client(ctx)).control_zone(_zone_named(c, t)["id"], f))
+
+
+@main.group()
+def group() -> None:
+    """A DALI group (0-15)."""
+
+
+def _send_group(ctx: click.Context, target: str, feats: dict) -> None:
+    if not target.isdigit() or not 0 <= int(target) <= 15:
+        raise click.UsageError("group must be 0-15")
+    _client(ctx).control_group(int(target), feats, line=ctx.obj.get("line"))
+
+
+_verbs(group, "GROUP", _send_group)
+
+
+@main.group()
 @click.option("--line", type=int, help="Restrict to one DALI line")
 @click.pass_context
-def all_off(ctx: click.Context, fade: float, line: int | None) -> None:
-    """Broadcast OFF to every device."""
-    _client(ctx).control_broadcast(off_features(fade), line=line)
+def broadcast(ctx: click.Context, line: int | None) -> None:
+    """Every device on the bus."""
+    ctx.obj["line"] = line
 
 
-def _target_option(f):
-    f = click.option("--device", type=int, help="Device id")(f)
-    f = click.option("--zone", type=int, help="Zone id")(f)
-    f = click.option("--group", type=int, help="DALI group")(f)
-    return f
-
-
-def _control(
-    ctx: click.Context, device: int | None, zone: int | None, group: int | None, feats: dict
-) -> None:
-    c = _client(ctx)
-    if sum(x is not None for x in (device, zone, group)) != 1:
-        raise click.UsageError("give exactly one of --device, --zone, --group")
-    if device is not None:
-        c.control_device(device, feats)
-    elif zone is not None:
-        c.control_zone(zone, feats)
-    else:
-        c.control_group(group, feats)  # type: ignore[arg-type]
-
-
-@main.command()
-@_target_option
-@click.option("--level", default=100, show_default=True, help="Dim level 0-100")
-@click.option("--fade", default=0.0)
+@broadcast.command("on")
+@_level_option
+@_fade_option
 @click.pass_context
-def on(
-    ctx: click.Context, device: int | None, zone: int | None, group: int | None, level: int, fade: float
-) -> None:
-    """Switch a device, zone or group on."""
-    _control(ctx, device, zone, group, on_features(level, fade))
+def broadcast_on(ctx: click.Context, level: int, fade: float) -> None:
+    """Switch everything on."""
+    _client(ctx).control_broadcast(on_features(level, fade), line=ctx.obj.get("line"))
 
 
-@main.command()
-@_target_option
-@click.option("--fade", default=0.0)
+@broadcast.command("off")
+@_fade_option
 @click.pass_context
-def off(ctx: click.Context, device: int | None, zone: int | None, group: int | None, fade: float) -> None:
-    """Switch a device, zone or group off."""
-    _control(ctx, device, zone, group, off_features(fade))
+def broadcast_off(ctx: click.Context, fade: float) -> None:
+    """Switch everything off."""
+    _client(ctx).control_broadcast(off_features(fade), line=ctx.obj.get("line"))
 
 
-@main.command()
-@_target_option
+@broadcast.command("recall")
 @click.argument("scene", type=int)
-@click.option("--fade", default=0.0)
+@_fade_option
 @click.pass_context
-def recall(
-    ctx: click.Context, device: int | None, zone: int | None, group: int | None, scene: int, fade: float
-) -> None:
-    """Recall a scene on a device, zone or group."""
+def broadcast_recall(ctx: click.Context, scene: int, fade: float) -> None:
+    """Recall a scene everywhere."""
     feats = {"sceneWithFade": {"scene": scene, "fadeTime": fade}} if fade > 0 else {"scene": scene}
-    _control(ctx, device, zone, group, feats)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    _client(ctx).control_broadcast(feats, line=ctx.obj.get("line"))

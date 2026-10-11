@@ -12,9 +12,10 @@ dali-iot site init --identify  # site/site.yaml from the gateway, with serials r
 dali-iot bus identify          # serial, unit and product of every device (memory bank 0)
 dali-iot device identify 7     # blink the light at A7 so you can see which one it is
 dali-iot plan && dali-iot apply
-dali-iot all-off               # broadcast off
-dali-iot on --zone 2 --level 60
-dali-iot --trace off --device 8
+dali-iot broadcast off         # everything off
+dali-iot zone on lounge --level 60
+dali-iot device off 7          # by DALI address; --trace logs the requests
+dali-iot group recall 2 3      # scene 3 on group 2
 dali-iot gateway spec          # download the gateway's OpenAPI spec (then: make models)
 ```
 

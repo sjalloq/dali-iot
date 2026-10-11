@@ -13,7 +13,7 @@ This file is how to work here.
 
 - **Goal:** author and apply lighting automations for the house in house terms
   (rooms, buttons, sunset, clock times) and drive lights from scripts.
-- **Scope (v1):** REST client; `dump`; scriptable verbs (all-off, on, off, recall);
+- **Scope (v1):** REST client; `dump`; scriptable verbs by noun (device ADDRESS | zone NAME | group N | broadcast: on/off/recall);
   intent model + compiler to gateway objects; YAML config with `plan`/`apply`.
   Then a small web UI (phone-usable, runs on Proxmox) over the same intent model.
 - **Non-goals:** the DALI bus plane (raw frames, bus monitor, control device
@@ -53,7 +53,7 @@ make models                    # regenerate api_models.py from the newest spec/o
 dali-iot gateway scan [--yes] [--save]   # find gateways on the LAN
 dali-iot gateway set-url http://<gw>
 dali-iot site init | plan | apply [--prune] [--yes]
-dali-iot [--trace] dump | all-off | on|off --device N|--zone N|--group N | recall N --zone N
+dali-iot [--trace] dump | device on|off|recall|identify ADDR | zone on|off NAME | group on N | broadcast off
 ```
 
 ## Rules
