@@ -6,7 +6,8 @@ site file, `site/site.yaml` by default. The `site/` directory is git-ignored
 because the file describes one installation. `--site PATH` points elsewhere.
 
 ```
-dali-iot site init     # starting file from what the gateway holds now
+dali-iot site init     # starting file from what the gateway holds now (--identify adds serials)
+dali-iot site check    # does the file still describe the bus? asks every device (read-only)
 dali-iot plan          # what apply would change (read-only)
 dali-iot apply         # make the gateway match the file
 ```
@@ -142,23 +143,34 @@ The gateway only learns about the bus when it scans, and it keys its device
 records by line and address without ever reconciling them. Readdress a
 device with a commissioning tool and the gateway is left with stale data: the
 old record stays, and the next scan adds a fresh record at the new address
-with a factory name and no zone or schedule memberships. The REST API exposes
-no serial number and no liveness flag, so a stale record cannot be told from
-a live device that is switched off. Serials recorded with `--identify`, or a
-fresh `dali-iot bus identify`, show which address a device went to.
+with a factory name and no zone or schedule memberships. Nothing in the REST
+API tells a stale record from a live device that is switched off.
 
-Treat any readdressing done elsewhere as a reconfiguration of the gateway:
+`dali-iot site check` asks the bus instead. It sweeps every short address on
+each line, reads the serial and unit index from each device that answers,
+and compares with the file and with the gateway's records:
 
-1. `dali-iot gateway rescan` so the gateway sees the bus as it is now.
-2. Edit the file: change `address:` on the moved device and any
-   `devices: [...]` references to it, and remove nothing else.
-3. `dali-iot plan` lists the old address as a device not in the file;
-   `dali-iot apply --prune` deletes that record and repoints zones and
-   schedules, which are resolved from addresses when the change runs.
-   Deleting a record never touches the device itself.
+- `moved`: a serial from the file answers at another address. The finding
+  gives the exact edit.
+- `lost`: the file's device is not on the bus at all.
+- `replaced`: the address answers, but with a different serial.
+- `new`: a device on the bus that the file does not know.
+- `unknown`: the file entry has no serial to compare, so only presence was
+  checked; `site init --identify` records serials.
+- `stale`: a gateway record at an address where nothing answers;
+  `apply --prune` deletes it.
+- `unscanned`: a device on the bus the gateway has no record of;
+  `gateway rescan` adds it.
 
-Names and memberships kept in the gateway for the old record are not
-carried over by the gateway; the file is what restores them.
+It exits 1 when anything differs. It takes about half a minute for a line:
+one query per address, then a bank read per device. `--no-sweep` skips the
+sweep and reads only the gateway's addresses.
+
+The readdress workflow is therefore: change the address, `site check`, make
+the edit it names, `gateway rescan`, then `plan` and `apply --prune`. Zone and
+schedule targets follow, because they are resolved from addresses when the
+change runs. The file is what restores names and memberships, since the
+gateway does not carry them over.
 
 The site file covers what the REST API covers: control gear, meaning lamps
 and relays. Control devices such as push-button couplers are not visible to

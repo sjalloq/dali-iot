@@ -10,6 +10,7 @@ from typing import Any
 import click
 
 from . import bus as dalibus
+from . import check as checker
 from . import config, discover
 from . import plan as planner
 from . import site as sitefile
@@ -234,6 +235,52 @@ def bus_identify(ctx: click.Context) -> None:
             f"line {i.line} A{i.address:<3} serial {i.serial!s:<12}{unit:<10} fw {i.firmware!s:<6} "
             f"{i.article or ''}{'' if i.dali2 else '  (pre-DALI-2 bank layout)'}"
         )
+
+
+@site.command("check")
+@click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
+@click.option("--no-sweep", is_flag=True, help="Only look at the gateway's addresses, not all 64 per line")
+@click.pass_context
+def site_check(ctx: click.Context, path: Path, no_sweep: bool) -> None:
+    """Does the file still describe the bus? Asks every device for its serial.
+
+    Sweeps each line in the file for control gear, reads bank 0 of what answers and
+    compares serial and unit with the file, then the gateway's records with the bus.
+    Exits 1 when something differs. Names, groups, zones and schedules are plan's job.
+    """
+    site = _load_site(path)
+    c = _client(ctx)
+    gw_devices = c.devices()
+    lines = sorted(set(site.lines) | {int(d.get("line", 0)) for d in gw_devices})
+    url, _ = _url(ctx)
+    try:
+        sock = dalibus.connect(url, timeout=ctx.obj["timeout"])
+    except OSError as e:
+        raise click.ClickException(f"cannot open {dalibus.ws_url(url)}: {e}") from None
+    with dalibus.Bus(sock, timeout=ctx.obj["timeout"]) as bus:
+        if no_sweep:
+            addrs = sorted({(int(d.get("line", 0)), int(d["address"])) for d in gw_devices if "address" in d})
+        else:
+            addrs = []
+            for line in lines:
+                found = bus.sweep(
+                    line,
+                    lambda a, ln=line: click.echo(f"\rsweeping line {ln}... A{a:<3}", nl=False, err=True),
+                )
+                addrs += [(line, a) for a in found]
+            click.echo("", err=True)
+        on_bus = []
+        for n, ident in enumerate(bus.identify_all(addrs, product=False), 1):
+            click.echo(f"\rreading serials... {n}/{len(addrs)}", nl=False, err=True)
+            on_bus.append(ident)
+        click.echo("", err=True)
+    findings = checker.compare(site, on_bus, gw_devices)
+    for f in findings:
+        click.echo(str(f))
+    if findings:
+        click.echo(f"{len(findings)} difference(s)", err=True)
+        ctx.exit(1)
+    click.echo(f"site file matches the bus ({len(on_bus)} device(s))", err=True)
 
 
 def _load_site(path: Path) -> sitefile.Site:

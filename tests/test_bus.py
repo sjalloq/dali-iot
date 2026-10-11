@@ -38,6 +38,13 @@ class FakeSocket:
         elif data[0] == 0xA3:
             self.dtr0 = data[1]
             self.queue.append(json.dumps({"type": "daliAnswer", "data": {"line": 0, "result": 0}}))
+        elif data[1] == 0x91:  # QUERY CONTROL GEAR PRESENT
+            if any(a == data[0] >> 1 for a, _ in self.banks):
+                self.queue.append(
+                    json.dumps({"type": "daliAnswer", "data": {"line": 0, "result": 8, "daliData": 255}})
+                )
+            else:
+                self.queue.append(json.dumps({"type": "daliAnswer", "data": {"line": 0, "result": 0}}))
         elif data[1] == 0xC5:
             bank = self.banks.get((data[0] >> 1, self.dtr1))
             if bank is not None and self.dtr0 < len(bank):
@@ -121,3 +128,13 @@ def test_answer_bytes_may_be_int_or_list(v):
             pass
 
     assert Bus(S()).query(0, [1, 0xC5]) == 5
+
+
+def test_sweep_finds_present_addresses():
+    sock = FakeSocket({(0, 0): OLD_BANK0, (7, 0): NEW_BANK0})
+    seen = []
+    with Bus(sock) as bus:
+        assert bus.sweep(0, seen.append) == [0, 7]
+        assert bus.identify(0, 7, product=False).product_block == b""
+    assert seen == list(range(64))
+    assert sum(1 for m in sock.sent if m["data"]["daliData"][1] == 0x91) == 64

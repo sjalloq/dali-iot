@@ -89,6 +89,11 @@ class Identity:
         return self.bank0[0x1A]
 
     @property
+    def key(self) -> tuple[int, int | None] | None:
+        """What identifies this physical unit: (serial, unit index)."""
+        return (self.serial, self.unit) if self.serial is not None else None
+
+    @property
     def article(self) -> str | None:
         """Lunatone article number with suffix, e.g. ``86458619-300U-HS``."""
         return parse_article(self.product_block)
@@ -147,6 +152,20 @@ class Bus:
                 return v[0] if isinstance(v, list) else v
             # daliFrame echoes, daliMonitor and daliStatus events are not answers
 
+    def present(self, line: int, address: int) -> bool:
+        """QUERY CONTROL GEAR PRESENT: does anything answer at this short address?"""
+        return self.query(line, [(address << 1) | 1, 0x91]) is not None
+
+    def sweep(self, line: int, progress: Callable[[int], None] | None = None) -> list[int]:
+        """Every short address on ``line`` that has control gear, one query each."""
+        found = []
+        for address in range(64):
+            if self.present(line, address):
+                found.append(address)
+            if progress:
+                progress(address)
+        return found
+
     def read_bank(self, line: int, address: int, bank: int, start: int, count: int) -> list[int | None]:
         """READ MEMORY LOCATION ``count`` bytes from ``bank`` at ``start``.
 
@@ -157,12 +176,15 @@ class Bus:
         self.query(line, [0xA3, start])  # SET DTR0 = offset
         return [self.query(line, [(address << 1) | 1, 0xC5]) for _ in range(count)]  # DTR0 auto-increments
 
-    def identify(self, line: int, address: int) -> Identity:
+    def identify(self, line: int, address: int, product: bool = True) -> Identity:
+        """Bank 0 identity; ``product=False`` skips the Lunatone block (serial and unit only)."""
         raw = self.read_bank(line, address, 0, 0, 0x1B)
         if raw[0] is None:  # nothing answers at this address
             return Identity(line, address, b"")
         bank0 = _bytes(raw[: raw[0] + 1])
         ident = Identity(line, address, bank0)
+        if not product:
+            return ident
         if ident.dali2 and ident.last_offset >= 0x84:
             ident.product_block = _bytes(
                 self.read_bank(line, address, 0, 0x84, min(0x30, ident.last_offset - 0x84 + 1))
@@ -172,10 +194,13 @@ class Bus:
         return ident
 
     def identify_all(
-        self, devices: list[tuple[int, int]], progress: Callable[[Identity], None] | None = None
+        self,
+        devices: list[tuple[int, int]],
+        progress: Callable[[Identity], None] | None = None,
+        product: bool = True,
     ) -> Iterator[Identity]:
         for line, address in devices:
-            ident = self.identify(line, address)
+            ident = self.identify(line, address, product=product)
             if progress:
                 progress(ident)
             yield ident
