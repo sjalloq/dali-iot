@@ -29,12 +29,15 @@ This file is how to work here.
   payload helpers (`off_features`, `on_features`, `schedule_action`)
 - `src/dali_iot/discover.py` — LAN scan on real up interfaces: UDP `discovery` to 5555; broadcast first, confirmed unicast sweep as fallback
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
+- `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones; `site init` generator
+- `src/dali_iot/plan.py` — diff site vs gateway into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
   Its header names the spec file, and so the firmware version, it came from
 - `spec/` — git-ignored; `dali-iot gateway spec` downloads `openapi-<firmware>.json` here
 - `tests/` — pytest; `conftest.py` has a fake session, no gateway needed
-- `docs/` — Sphinx (MyST, furo); `docs/gateway-api.md` collects API gotchas
+- `docs/` — Sphinx (MyST, furo); `docs/site-file.md` the site format, `docs/gateway-api.md` API gotchas
+- `site/` — git-ignored; the user's own site file lives here
 
 ## Commands
 
@@ -47,6 +50,7 @@ dali-iot gateway spec          # download the gateway's OpenAPI spec into spec/
 make models                    # regenerate api_models.py from the newest spec/openapi-*.json
 dali-iot gateway scan [--yes] [--save]   # find gateways on the LAN
 dali-iot gateway set-url http://<gw>
+dali-iot site init | plan | apply [--prune] [--yes]
 dali-iot [--trace] dump | all-off | on|off --device N|--zone N|--group N | recall N --zone N
 ```
 
@@ -66,6 +70,11 @@ dali-iot [--trace] dump | all-off | on|off --device N|--zone N|--group N | recal
   in exactly one place.
 
 ## Invariants
+
+- The site file never contains the gateway's device id. Devices are keyed by
+  line + short address, and a `type` mismatch blocks changes to that device.
+- The REST API sees control gear only. Control devices (buttons, sensors as
+  inputs) are not modelled here and must not be added to the site file.
 
 - Scheduler actions are built only by `schedule_action()`: the gateway accepts
   `data: {switchable: …}` silently and never fires it; it must be

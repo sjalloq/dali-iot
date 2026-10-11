@@ -10,6 +10,8 @@ from typing import Any
 import click
 
 from . import config, discover
+from . import plan as planner
+from . import site as sitefile
 from .client import AUTOMATIONS, Client, off_features, on_features
 
 
@@ -138,6 +140,80 @@ def dump(ctx: click.Context, out: Path) -> None:
     for name, data in files.items():
         (out / name).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
         click.echo(f"wrote {out / name}")
+
+
+# --- site file: names, zones; plan and apply ---
+
+
+@main.group()
+def site() -> None:
+    """The site file: your names for devices and zones."""
+
+
+@site.command("init")
+@click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
+@click.option("--force", is_flag=True, help="Overwrite an existing file")
+@click.pass_context
+def site_init(ctx: click.Context, path: Path, force: bool) -> None:
+    """Write a starting site file from what the gateway holds now."""
+    if path.exists() and not force:
+        raise click.ClickException(f"{path} exists; pass --force to overwrite")
+    c = _client(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(sitefile.from_gateway(c.devices(), c.zones()))
+    click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
+
+
+def _load_site(path: Path) -> sitefile.Site:
+    try:
+        return sitefile.load(path)
+    except FileNotFoundError:
+        raise click.ClickException(f"{path} not found; create one with: dali-iot site init") from None
+    except ValueError as e:
+        raise click.ClickException(f"{path}: {e}") from None
+
+
+def _print_plan(changes: list[planner.Change]) -> int:
+    real = [c for c in changes if c.apply]
+    errors = [c for c in changes if c.op == "error"]
+    for c in changes:
+        click.echo(str(c))
+    summary = f"{len(real)} change(s)" if real else "no changes"
+    if errors:
+        summary += f", {len(errors)} error(s)"
+    click.echo(summary, err=True)
+    return len(real)
+
+
+@main.command("plan")
+@click.option(
+    "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
+)
+@click.option("--prune", is_flag=True, help="Also delete zones that are not in the site file")
+@click.pass_context
+def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
+    """Show what apply would change on the gateway. Read-only."""
+    _print_plan(planner.build(_load_site(path), _client(ctx), prune=prune))
+
+
+@main.command("apply")
+@click.option(
+    "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
+)
+@click.option("--prune", is_flag=True, help="Also delete zones that are not in the site file")
+@click.option("--yes", "-y", is_flag=True, help="Apply without asking")
+@click.pass_context
+def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:
+    """Make the gateway match the site file."""
+    changes = planner.build(_load_site(path), _client(ctx), prune=prune)
+    if not _print_plan(changes):
+        return
+    if not yes and not click.confirm("apply?", err=True):
+        raise click.Abort()
+    for c in changes:
+        if c.apply:
+            c.apply()
+            click.echo(f"applied {c.op} {c.what}", err=True)
 
 
 # --- scriptable verbs ---

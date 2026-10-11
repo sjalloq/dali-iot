@@ -14,5 +14,6 @@ YAML files kept in git, then a small web UI for use from a phone.
 ```{toctree}
 :maxdepth: 2
 
+site-file
 gateway-api
 ```

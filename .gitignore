@@ -9,4 +9,7 @@ docs/build/
 # Downloaded from the gateway (dali-iot gateway spec / dump); regenerate, don't commit
 spec/
 dump/
+
+# Your installation: names and zones (dali-iot site init)
+site/
 *.local.yaml
