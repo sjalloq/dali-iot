@@ -296,6 +296,41 @@ def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:
             click.echo(f"applied {c.op} {c.what}", err=True)
 
 
+# --- devices ---
+
+
+@main.group()
+def device() -> None:
+    """Single devices, by DALI address."""
+
+
+@device.command("identify")
+@click.argument("address")
+@click.option("--times", default=2, show_default=True, help="How many off/on cycles")
+@click.option("--pause", default=0.7, show_default=True, help="Seconds between steps")
+@click.pass_context
+def device_identify(ctx: click.Context, address: str, times: int, pause: float) -> None:
+    """Blink the light at ADDRESS (7, or 1/7 for line 1) so you can see which one it is.
+
+    Switches it off and on a couple of times, then restores its previous state.
+    """
+    try:
+        line, addr = sitefile.parse_ref(int(address) if address.isdigit() else address)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from None
+    c = _client(ctx)
+    match = [d for d in c.devices() if int(d.get("line", 0)) == line and d.get("address") == addr]
+    if not match:
+        raise click.ClickException(f"nothing at line {line} A{addr} on the gateway")
+    d = match[0]
+    click.echo(
+        f"blinking line {line} A{addr} {d.get('name')!r} ({sitefile.type_name(d.get('daliTypes') or [])})...",
+        err=True,
+    )
+    c.blink_device(d["id"], times=times, pause=pause)
+    click.echo("restored", err=True)
+
+
 # --- scriptable verbs ---
 
 

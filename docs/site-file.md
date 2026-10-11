@@ -47,6 +47,9 @@ number with its suffix) and, for multi-channel devices that share one serial,
 device an address was, which nothing in the REST API does.
 `dali-iot bus identify` prints the same without writing a file.
 
+To find out which light an address is, `dali-iot device identify 7` blinks
+it off and on twice and restores it.
+
 Zones and schedules refer to devices by short address, never by name: an
 integer is an address on line 0, and `"line/address"` reaches other lines.
 Names are labels you can change freely without breaking anything. Every

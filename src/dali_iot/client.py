@@ -108,6 +108,28 @@ class Client:
     def control_device(self, device_id: int, features: dict) -> None:
         self.post(f"/device/{device_id}/control", json=features)
 
+    def blink_device(self, device_id: int, times: int = 2, pause: float = 0.7) -> dict:
+        """Switch a device off and on ``times`` times, then put it back as it was.
+
+        The state to restore comes from the device record's feature status
+        (``dimmable.status`` 0-100 for dimmers, ``switchable.status`` for relays).
+        Returns the features sent to restore it.
+        """
+        d = self.device(device_id)
+        feats = d.get("features") or {}
+        level = (feats.get("dimmable") or {}).get("status")
+        was_on = bool((feats.get("switchable") or {}).get("status")) or bool(level)
+        for _ in range(times):
+            self.control_device(device_id, off_features() if was_on else on_features())
+            time.sleep(pause)
+            self.control_device(device_id, on_features() if was_on else off_features())
+            time.sleep(pause)
+        restore = (
+            on_features(round(level)) if was_on and level else (on_features() if was_on else off_features())
+        )
+        self.control_device(device_id, restore)
+        return restore
+
     def control_group(self, group_id: int, features: dict, line: int | None = None) -> None:
         self.post(
             f"/group/{group_id}/control", json=features, **({"_line": line} if line is not None else {})

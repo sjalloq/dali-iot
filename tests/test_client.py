@@ -65,3 +65,24 @@ def test_rescan_refuses_while_a_scan_runs(client, fake):
     fake.answers[("GET", "/dali/scan")] = {"id": "x", "status": "in progress", "progress": 10.0}
     with pytest.raises(RuntimeError, match="already running"):
         client.rescan()
+
+
+def test_blink_restores_a_dimmer_that_was_on(client, fake, monkeypatch):
+    monkeypatch.setattr("dali_iot.client.time.sleep", lambda s: None)
+    fake.answers[("GET", "/device/3")] = {
+        "id": 3,
+        "features": {"switchable": {"status": True}, "dimmable": {"status": 60.0}},
+    }
+    restore = client.blink_device(3, times=2)
+    posts = [j for m, p, j, _ in fake.calls if m == "POST" and p == "/device/3/control"]
+    assert posts[:4] == [off_features(), on_features(), off_features(), on_features()]
+    assert posts[4] == restore == on_features(60)
+    assert len(posts) == 5
+
+
+def test_blink_restores_a_relay_that_was_off(client, fake, monkeypatch):
+    monkeypatch.setattr("dali_iot.client.time.sleep", lambda s: None)
+    fake.answers[("GET", "/device/8")] = {"id": 8, "features": {"switchable": {"status": False}}}
+    client.blink_device(8, times=1)
+    posts = [j for m, p, j, _ in fake.calls if m == "POST"]
+    assert posts == [on_features(), off_features(), off_features()]
