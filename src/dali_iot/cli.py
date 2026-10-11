@@ -25,7 +25,7 @@ def _trace(method: str, url: str, req: Any, status: int, resp: Any) -> None:
         click.echo("< " + json.dumps(resp)[:2000], err=True)
 
 
-@click.group()
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--url", help="Gateway base URL, e.g. http://10.0.0.239 (else from config)")
 @click.option("--trace", is_flag=True, help="Log every request and response to stderr")
 @click.option("--timeout", default=5.0, show_default=True)
