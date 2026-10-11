@@ -7,12 +7,18 @@ from dali_iot import cli
 from dali_iot.client import Client, off_features, on_features
 from tests.test_plan import _gw
 
+STEP = {
+    "type": "features",
+    "delay": 0,
+    "data": {"targets": [{"type": "device", "id": 8}], "features": {"switchable": True}},
+}
+
 
 @pytest.fixture
 def run(fake, monkeypatch):
     _gw(fake)
     fake.answers[("GET", "/automations/sequences")] = {
-        "sequences": [{"id": 4, "name": "evening", "steps": []}]
+        "sequences": [{"id": 4, "name": "evening", "steps": [STEP]}]
     }
     monkeypatch.setattr(cli, "_url", lambda ctx: ("http://gw", "test"))
     monkeypatch.setattr(cli, "_client", lambda ctx: Client("http://gw", session=fake))
