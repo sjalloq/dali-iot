@@ -39,6 +39,16 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
+### Groups and zones
+
+A DALI *group* (0–15) is membership stored in the device itself; every
+device lists the groups it belongs to under `groups`, and changing that list
+rewrites the device. A *zone* is a gateway object: a named set of targets
+(devices, groups or a whole line) that the gateway controls together. A
+group only appears in the file as a zone if someone created a zone for it,
+so a group can have members and still have no zone. To control such a group
+as a unit, add a zone that targets it.
+
 ### Types
 
 `type` names what the gateway reports in `daliTypes`:
