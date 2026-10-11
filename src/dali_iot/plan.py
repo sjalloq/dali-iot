@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable
+from typing import Any
 
+from .automation import sequence_canonical, trigger_canonical
 from .client import Client
-from .schedule import canonical
+from .intent import Targets
+from .schedule import canonical as schedule_canonical
 from .site import Site, parse_ref, type_name
 
 
@@ -164,71 +167,72 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                     Change("note", f"zone {name}", f"id {gz['id']} is not in the site file (--prune deletes)")
                 )
 
-    # schedules: by name. Zone targets may be zones this plan creates, so they
+    # automations: by name. Zone targets may be zones this plan creates, so they
     # are resolved again at apply time.
     zone_ids = {name: gz["id"] for name, gz in gw_by_name.items()}
+    refs_by_id = {i: key for key, i in ids.items()}
 
-    def targets_for(sc, zone_ids: dict[str, int]) -> list[dict]:
-        t = [{"type": "device", "id": ids[parse_ref(r)]} for r in sc.devices]
-        t += [{"type": "zone", "id": zone_ids[n]} for n in sc.zones]
-        t += [{"type": "group", "id": g} for g in sc.groups]
-        t += [{"type": "broadcast", "id": line} for line in sc.broadcast]
-        return t
+    def fresh_zone_ids() -> dict[str, int]:
+        return {str(z.get("name")): z["id"] for z in client.zones()}
 
-    def body_now(sc) -> dict:
-        fresh = {str(z.get("name")): z["id"] for z in client.zones()}
-        return sc.body(targets_for(sc, fresh))
+    def unresolved(t: Targets) -> list[str]:
+        return [str(r) for r in t.devices if parse_ref(r) not in ids]
 
-    gw_sched: dict[str, dict] = {}
-    for r in client.automations("schedule"):
-        gw_sched.setdefault(str(r.get("name")), r)
-    site_sched_names = {sc.name for sc in site.schedules}
-    for sc in site.schedules:
-        name = sc.name
-        missing = [r for r in sc.devices if parse_ref(r) not in ids]
-        if missing:
-            changes.append(
-                Change("error", f"schedule {name}", f"skipped: device(s) {_refs(missing)} unresolved")
-            )
-            continue
-        pending = [n for n in sc.zones if n not in zone_ids]
-        summary = f"{sc.at} -> {sc.action_features()} on " + _names(sc)
-        gr = gw_sched.get(name)
-        if gr is None:
-            changes.append(
-                Change(
-                    "create",
-                    f"schedule {name}",
-                    summary,
-                    lambda s=sc: client.create_automation("schedule", body_now(s)),
-                )
-            )
-        elif pending or canonical(gr) != canonical(sc.body(targets_for(sc, zone_ids))):
-            changes.append(
-                Change(
-                    "update",
-                    f"schedule {name}",
-                    summary,
-                    lambda i=gr["id"], s=sc: client.update_automation("schedule", i, body_now(s)),
-                )
-            )
-    for name, gr in gw_sched.items():
-        if name not in site_sched_names:
-            if prune:
-                changes.append(
-                    Change(
-                        "delete",
-                        f"schedule {name}",
-                        f"id {gr['id']}",
-                        lambda i=gr["id"]: client.delete_automation("schedule", i),
-                    )
-                )
-            else:
-                changes.append(
-                    Change(
-                        "note", f"schedule {name}", f"id {gr['id']} is not in the site file (--prune deletes)"
-                    )
-                )
+    def pending_zones(t: Targets) -> list[str]:
+        return [n for n in t.zones if n not in zone_ids]
+
+    # schedules
+    changes += _sync(
+        "schedule",
+        site.schedules,
+        client.automations("schedule"),
+        client,
+        unresolved=unresolved,
+        pending=pending_zones,
+        body=lambda sc, z: sc.body(sc.resolve(ids, z)),
+        same=lambda sc, rec: (
+            schedule_canonical(rec) == schedule_canonical(sc.body(sc.resolve(ids, zone_ids)))
+        ),
+        summary=lambda sc: f"{sc.at} -> {sc.action_features()} on {sc.describe()}",
+        fresh_zone_ids=fresh_zone_ids,
+        prune=prune,
+    )
+    # triggers
+    changes += _sync(
+        "trigger",
+        site.triggers,
+        client.automations("trigger"),
+        client,
+        unresolved=lambda tr: (
+            unresolved(tr.targets) + [str(r) for r in tr.sources.devices if parse_ref(r) not in ids]
+        ),
+        pending=lambda tr: pending_zones(tr.targets),
+        body=lambda tr, z: tr.body(tr.targets.resolve(ids, z)),
+        same=lambda tr, rec: (
+            trigger_canonical(rec, refs_by_id)
+            == trigger_canonical(tr.body(tr.targets.resolve(ids, zone_ids)), refs_by_id)
+        ),
+        summary=lambda tr: tr.summary(),
+        fresh_zone_ids=fresh_zone_ids,
+        prune=prune,
+    )
+    # sequences
+    changes += _sync(
+        "sequence",
+        site.sequences,
+        client.automations("sequence"),
+        client,
+        unresolved=lambda sq: unresolved(sq.all_targets()),
+        pending=lambda sq: pending_zones(sq.all_targets()),
+        body=lambda sq, z: sq.body([st.resolve(ids, z) for st in sq.steps]),
+        same=lambda sq, rec: (
+            sequence_canonical(rec)
+            == sequence_canonical(sq.body([st.resolve(ids, zone_ids) for st in sq.steps]))
+        ),
+        summary=lambda sq: sq.summary(),
+        fresh_zone_ids=fresh_zone_ids,
+        prune=prune,
+    )
     return changes
 
 
@@ -236,7 +240,70 @@ def _refs(refs) -> str:
     return ", ".join(f"A{r}" if isinstance(r, int) else str(r) for r in refs)
 
 
-def _names(sc) -> str:
-    parts = [f"A{r}" if isinstance(r, int) else str(r) for r in sc.devices] + [f"zone {z}" for z in sc.zones]
-    parts += [f"group {g}" for g in sc.groups] + [f"line {line}" for line in sc.broadcast]
-    return ", ".join(parts)
+def _sync(
+    kind: str,
+    items: list,
+    gw_items: list[dict],
+    client: Client,
+    *,
+    unresolved: Callable[[Any], list[str]],
+    pending: Callable[[Any], list[str]],
+    body: Callable[[Any, dict[str, int]], dict],
+    same: Callable[[Any, dict], bool],
+    summary: Callable[[Any], str],
+    fresh_zone_ids: Callable[[], dict[str, int]],
+    prune: bool,
+) -> list[Change]:
+    """Create, update, note or delete one kind of named automation."""
+    changes: list[Change] = []
+    gw_by_name: dict[str, dict] = {}
+    for r in gw_items:
+        gw_by_name.setdefault(str(r.get("name")), r)
+    site_names = {it.name for it in items}
+    for it in items:
+        name = it.name
+        missing = unresolved(it)
+        if missing:
+            changes.append(
+                Change("error", f"{kind} {name}", f"skipped: device(s) {', '.join(missing)} unresolved")
+            )
+            continue
+        rec = gw_by_name.get(name)
+        if rec is None:
+            changes.append(
+                Change(
+                    "create",
+                    f"{kind} {name}",
+                    summary(it),
+                    lambda i=it: client.create_automation(kind, body(i, fresh_zone_ids())),
+                )
+            )
+        elif pending(it) or not same(it, rec):
+            changes.append(
+                Change(
+                    "update",
+                    f"{kind} {name}",
+                    summary(it),
+                    lambda i=it, rid=rec["id"]: client.update_automation(
+                        kind, rid, body(i, fresh_zone_ids())
+                    ),
+                )
+            )
+    for name, rec in gw_by_name.items():
+        if name not in site_names:
+            if prune:
+                changes.append(
+                    Change(
+                        "delete",
+                        f"{kind} {name}",
+                        f"id {rec['id']}",
+                        lambda rid=rec["id"]: client.delete_automation(kind, rid),
+                    )
+                )
+            else:
+                changes.append(
+                    Change(
+                        "note", f"{kind} {name}", f"id {rec['id']} is not in the site file (--prune deletes)"
+                    )
+                )
+    return changes

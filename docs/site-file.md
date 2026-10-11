@@ -1,7 +1,7 @@
 # Site file
 
 `dali-iot` keeps your names for the gateway's devices and zones, and your
-schedules, in a YAML
+schedules, triggers and sequences, in a YAML
 site file, `site/site.yaml` by default. The `site/` directory is git-ignored
 because the file describes one installation. `--site PATH` points elsewhere.
 
@@ -102,6 +102,55 @@ schedules:
 A date range (`activePeriod`) or day-of-month list (`activeDays`) on the
 gateway is not modelled: it is neither written nor compared.
 
+### Triggers
+
+A trigger mirrors what happens to its sources onto its targets. When a
+source receives a control command on the bus, from a push-button coupler
+say, the gateway repeats it to the targets. This is how a wall switch that
+drives one DALI group also drives a zone, or a lamp on another line.
+
+```yaml
+triggers:
+  - name: hall switch also lights the landing
+    sources:
+      groups: [3]           # DALI groups as seen on the bus (line 0; set line: for another)
+      devices: [5]          # addresses whose commands are mirrored
+    targets:
+      zones: [landing]
+      devices: [7]
+    enabled: true
+```
+
+Sources are written to the gateway as bus addresses (`d16gear`/`d16group`),
+so the file never needs gateway ids. Targets take the same keys as a zone or
+schedule: `devices`, `zones`, `groups`, `broadcast`.
+
+### Sequences
+
+A sequence is an ordered list of steps. Each step has targets, an action in
+the same vocabulary as a schedule, and a `delay` in seconds that the gateway
+waits before running it.
+
+```yaml
+sequences:
+  - name: evening
+    repeat: 2               # optional; loop: true runs until stopped
+    steps:
+      - devices: [7]
+        switch: on
+      - groups: [1]
+        level: 30
+        fade: 2
+        delay: 1.5
+      - zones: [lounge]
+        scene: 2
+        delay: 0.5
+        enabled: false      # a step can be parked without deleting it
+```
+
+Sequences are stored, not run, by `apply`. Starting one is a gateway action
+(`POST /automations/sequence/{id}/start`), not part of the file.
+
 ### Types
 
 `type` names what the gateway reports in `daliTypes`:
@@ -130,9 +179,10 @@ over `led`. Anything else is written as the raw number.
 - **Zones** are matched by name: missing ones are created, differing targets
   are updated. Zones the file does not mention are notes and left alone;
   `--prune` deletes them.
-- **Schedules** are matched by name the same way. An update sends the whole
-  schedule. A schedule may target a zone the same plan creates; the zone id
-  is looked up when the schedule change runs, so apply order works out.
+- **Schedules, triggers and sequences** are matched by name the same way. An
+  update sends the whole record. They may target a zone the same plan
+  creates; the zone id is looked up when the change runs, so apply order
+  works out. `--prune` deletes ones the file does not mention.
 - `plan` only reads. `apply` prints the plan, asks once, then runs each
   change in order; `--yes` skips the question. Errors never block the other
   changes.

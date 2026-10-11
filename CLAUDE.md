@@ -30,10 +30,13 @@ This file is how to work here.
 - `src/dali_iot/discover.py` — LAN scan on real up interfaces: UDP `discovery` to 5555; broadcast first, confirmed unicast sweep as fallback
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
 - `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; device references are addresses (`parse_ref`), never names or gateway ids; `site init` generator
+- `src/dali_iot/refs.py` — device references: short address (`7`, `"1/7"`) <-> (line, address)
+- `src/dali_iot/intent.py` — shared vocabulary: `Targets` (devices/zones/groups/broadcast) and `Action` (switch/level/fade/scene/features) <-> gateway dicts
+- `src/dali_iot/automation.py` — trigger (sources mirrored to targets, written as d16gear/d16group) and sequence (steps with delay) intents <-> gateway bodies
 - `src/dali_iot/schedule.py` — schedule intent (`at`, targets, switch/level/scene/features, days, months) <-> gateway scheduler body; `canonical()` for diffing
 - `src/dali_iot/bus.py` — WebSocket queries: memory bank reads -> `Identity` (serial, unit, article); read-only, never programs a device
 - `src/dali_iot/check.py` — `site check`: bus sweep + serials vs the file and vs gateway records (moved/lost/replaced/new/stale/unscanned)
-- `src/dali_iot/plan.py` — diff site vs gateway (devices, zones, schedules) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
+- `src/dali_iot/plan.py` — diff site vs gateway (devices, zones; schedules/triggers/sequences via one `_sync` by name) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
   Its header names the spec file, and so the firmware version, it came from

@@ -27,14 +27,14 @@ identifier the gateway shares with the bus::
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import schedule
+from . import automation, schedule
+from .refs import DeviceRef, format_ref, parse_ref
 
 DEFAULT_PATH = Path("site/site.yaml")
 
@@ -42,29 +42,6 @@ DEFAULT_PATH = Path("site/site.yaml")
 TYPES = {"fluorescent": 0, "emergency": 1, "dimmer": 4, "led": 6, "relay": 7, "colour": 8}
 _BY_NUMBER = {n: name for name, n in TYPES.items()}
 _PRIORITY = ["colour", "led", "dimmer", "fluorescent", "emergency", "relay"]  # most specific first
-
-
-DeviceRef = int | str  # address on line 0, or "line/address"
-
-
-def parse_ref(ref: DeviceRef) -> tuple[int, int]:
-    """A device reference -> (line, address)."""
-    if isinstance(ref, bool):
-        raise ValueError(f"device reference {ref!r} is not an address")  # noqa: TRY004  (pydantic wants ValueError)
-    if isinstance(ref, int):
-        line, addr = 0, ref
-    else:
-        m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", str(ref))
-        if not m:
-            raise ValueError(f"device reference {ref!r}; use an address like 7, or line/address like 1/7")
-        line, addr = int(m[1]), int(m[2])
-    if not 0 <= addr <= 63:
-        raise ValueError(f"device reference {ref!r}: address must be 0..63")
-    return line, addr
-
-
-def format_ref(line: int, address: int) -> DeviceRef:
-    return address if line == 0 else f"{line}/{address}"
 
 
 def type_name(dali_types: list[int]) -> str:
@@ -105,6 +82,8 @@ class Site(BaseModel):
     lines: dict[int, LineSpec] = Field(default_factory=dict)
     zones: list[ZoneSpec] = Field(default_factory=list)
     schedules: list[schedule.ScheduleSpec] = Field(default_factory=list)
+    triggers: list[automation.TriggerSpec] = Field(default_factory=list)
+    sequences: list[automation.SequenceSpec] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check(self) -> Site:
@@ -144,15 +123,32 @@ class Site(BaseModel):
             check_refs(f"zone {z.name!r}", z.devices)
             if not (z.devices or z.groups or z.broadcast):
                 raise ValueError(f"zone {z.name!r} has no targets")
-        sched_names: set[str] = set()
-        for sc in self.schedules:
-            if sc.name in sched_names:
-                raise ValueError(f"schedule name {sc.name!r} is used twice")
-            sched_names.add(sc.name)
-            check_refs(f"schedule {sc.name!r}", sc.devices)
-            for zname in sc.zones:
+
+        def check_targets(what: str, devices: list[DeviceRef], zones: list[str]) -> None:
+            check_refs(what, devices)
+            for zname in zones:
                 if zname not in zone_names:
-                    raise ValueError(f"schedule {sc.name!r} refers to unknown zone {zname!r}")
+                    raise ValueError(f"{what} refers to unknown zone {zname!r}")
+
+        for kind, items in (
+            ("schedule", self.schedules),
+            ("trigger", self.triggers),
+            ("sequence", self.sequences),
+        ):
+            names: set[str] = set()
+            for item in items:
+                if item.name in names:
+                    raise ValueError(f"{kind} name {item.name!r} is used twice")
+                names.add(item.name)
+                what = f"{kind} {item.name!r}"
+                if kind == "schedule":
+                    check_targets(what, item.devices, item.zones)
+                elif kind == "trigger":
+                    check_refs(f"{what} sources", item.sources.devices)
+                    check_targets(what, item.targets.devices, item.targets.zones)
+                else:
+                    t = item.all_targets()
+                    check_targets(what, t.devices, t.zones)
         return self
 
     def devices(self) -> list[tuple[int, DeviceSpec]]:
@@ -170,6 +166,8 @@ def from_gateway(
     zones: list[dict],
     schedules: list[dict] = (),
     identities: dict[tuple[int, int], dict[str, Any]] | None = None,
+    triggers: list[dict] = (),
+    sequences: list[dict] = (),
 ) -> str:
     """A starting site file from what the gateway holds now, as YAML text.
 
@@ -202,5 +200,9 @@ def from_gateway(
         out["zones"].append(spec)
     if schedules:
         out["schedules"] = [schedule.from_gateway(r, refs, zone_names) for r in schedules]
+    if triggers:
+        out["triggers"] = [automation.trigger_from_gateway(r, refs, zone_names) for r in triggers]
+    if sequences:
+        out["sequences"] = [automation.sequence_from_gateway(r, refs, zone_names) for r in sequences]
     header = "# Names for this installation. Edit freely; check with: dali-iot plan\n"
     return header + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)

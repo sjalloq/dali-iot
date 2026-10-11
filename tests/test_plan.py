@@ -53,6 +53,8 @@ def _gw(fake, schedules=GW_SCHEDULES):
     fake.answers[("GET", "/devices")] = {"devices": GW_DEVICES}
     fake.answers[("GET", "/zones")] = {"zones": GW_ZONES}
     fake.answers[("GET", "/automations/schedules")] = {"schedulers": schedules}
+    fake.answers[("GET", "/automations/triggerActions")] = {"triggerActions": []}
+    fake.answers[("GET", "/automations/sequences")] = {"sequences": []}
 
 
 def _site(devices, zones, schedules=()):
@@ -75,7 +77,7 @@ def test_plan_is_read_only_and_lists_changes(client, fake):
         ],
     )
     changes = plan.build(site, client)
-    assert [m for m, *_ in fake.calls] == ["GET", "GET", "GET"]  # devices, zones, schedules
+    assert [m for m, *_ in fake.calls] == ["GET"] * 5  # devices, zones, schedules, triggers, sequences
     assert [(c.op, c.what) for c in changes] == [
         ("rename", "device outside"),
         ("groups", "device outside"),

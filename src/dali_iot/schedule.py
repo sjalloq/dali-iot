@@ -14,9 +14,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from .client import schedule_action
+from .intent import Action, Targets
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 _DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -64,19 +65,10 @@ def format_at(mode: str, hour: int, minute: int, second: int) -> str:
     return f"{event}{sign}{hour}:{minute:02d}"
 
 
-class ScheduleSpec(BaseModel):
+class ScheduleSpec(Targets, Action):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
     at: str
-    devices: list[int | str] = Field(default_factory=list)  # addresses; see site.parse_ref
-    zones: list[str] = Field(default_factory=list)
-    groups: list[int] = Field(default_factory=list)
-    broadcast: list[int] = Field(default_factory=list)  # lines
-    switch: bool | None = None
-    level: int | None = Field(None, ge=0, le=100)
-    fade: float | None = Field(None, ge=0)
-    scene: int | None = Field(None, ge=0, le=15)
-    features: dict[str, Any] | None = None  # raw gateway features, for anything else
     days: list[str] | None = None  # mon..sun; None = every day
     months: list[str] | None = None  # jan..dec; None = every month
     enabled: bool = True
@@ -91,12 +83,7 @@ class ScheduleSpec(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> ScheduleSpec:
         parse_at(self.at)
-        actions = [k for k in ("switch", "level", "scene", "features") if getattr(self, k) is not None]
-        if len(actions) != 1:
-            raise ValueError(f"schedule {self.name!r}: give exactly one of switch, level, scene, features")
-        if self.fade is not None and self.level is None:
-            raise ValueError(f"schedule {self.name!r}: fade needs level")
-        if not (self.devices or self.zones or self.groups or self.broadcast):
+        if self.empty():
             raise ValueError(f"schedule {self.name!r} has no targets")
         for d in self.days or []:
             if d not in DAYS:
@@ -105,18 +92,6 @@ class ScheduleSpec(BaseModel):
             if m not in MONTHS:
                 raise ValueError(f"schedule {self.name!r}: unknown month {m!r} (use {', '.join(MONTHS)})")
         return self
-
-    def action_features(self) -> dict[str, Any]:
-        if self.switch is not None:
-            return {"switchable": self.switch}
-        if self.level is not None:
-            if self.fade:
-                return {"dimmableWithFade": {"dimValue": self.level, "fadeTime": self.fade}}
-            return {"dimmable": self.level}
-        if self.scene is not None:
-            return {"scene": self.scene}
-        assert self.features is not None
-        return self.features
 
     def body(self, targets: list[dict]) -> dict[str, Any]:
         """The full scheduler model for POST or PUT, given resolved targets."""
@@ -160,27 +135,8 @@ def from_gateway(rec: dict, device_refs: dict[int, Any], zone_names: dict[int, s
     c = canonical(rec)
     out: dict[str, Any] = {"name": rec.get("name") or f"schedule {rec.get('id')}"}
     out["at"] = format_at(c["mode"], *c["time"])
-    for kind, tid in c["targets"]:
-        if kind == "device" and tid in device_refs:
-            out.setdefault("devices", []).append(device_refs[tid])
-        elif kind == "zone" and tid in zone_names:
-            out.setdefault("zones", []).append(zone_names[tid])
-        elif kind == "group":
-            out.setdefault("groups", []).append(tid)
-        elif kind == "broadcast":
-            out.setdefault("broadcast", []).append(tid)
-    f = c["features"] or {}
-    if set(f) == {"switchable"}:
-        out["switch"] = bool(f["switchable"])
-    elif set(f) == {"dimmable"}:
-        out["level"] = int(f["dimmable"])
-    elif set(f) == {"dimmableWithFade"} and set(f["dimmableWithFade"]) <= {"dimValue", "fadeTime"}:
-        out["level"] = int(f["dimmableWithFade"].get("dimValue", 0))
-        out["fade"] = f["dimmableWithFade"].get("fadeTime", 0)
-    elif set(f) == {"scene"}:
-        out["scene"] = int(f["scene"])
-    else:
-        out["features"] = f
+    out.update(Targets.from_gateway(rec.get("targets") or [], device_refs, zone_names))
+    out.update(Action.from_features(c["features"]))
     if not all(c["days"]):
         out["days"] = [d for d, on in zip(DAYS, c["days"], strict=True) if on]
     if not all(c["months"]):

@@ -178,7 +178,7 @@ def dump(ctx: click.Context, out: Path) -> None:
 
 @main.group()
 def site() -> None:
-    """The site file: your names for devices and zones, and your schedules."""
+    """The site file: your names for devices and zones, plus schedules, triggers and sequences."""
 
 
 @site.command("init")
@@ -196,7 +196,16 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
     if identify:
         identities = dalibus.identities_by_address(_identify(ctx, devices))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(sitefile.from_gateway(devices, c.zones(), c.automations("schedule"), identities))
+    path.write_text(
+        sitefile.from_gateway(
+            devices,
+            c.zones(),
+            c.automations("schedule"),
+            identities,
+            c.automations("trigger"),
+            c.automations("sequence"),
+        )
+    )
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
 
 
