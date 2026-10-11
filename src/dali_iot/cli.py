@@ -192,10 +192,13 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
         raise click.ClickException(f"{path} exists; pass --force to overwrite")
     c = _client(ctx)
     devices = c.devices()
-    if identify:
-        identities = dalibus.identities_by_address(_identify(ctx, devices))
-    else:
-        identities = _kept_identities(path)  # keep serials from the file being replaced
+    identities = dalibus.identities_by_address(_identify(ctx, devices)) if identify else None
+    if not identify and _has_identities(path):
+        click.echo(
+            "note: the old file had serials; they are not carried over because addresses may have "
+            "changed. Pass --identify to read them from the bus again.",
+            err=True,
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         sitefile.from_gateway(
@@ -210,20 +213,16 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
 
 
-def _kept_identities(path: Path) -> dict[tuple[int, int], dict[str, Any]] | None:
-    """serial/unit/product per (line, address) from an existing site file, so a re-init keeps them."""
+def _has_identities(path: Path) -> bool:
+    """Does the file being replaced carry serials? Never copied: they are facts about an
+    address at the time they were read, and a re-init usually follows an address change."""
     if not path.exists():
-        return None
+        return False
     try:
         site = sitefile.load(path)
     except ValueError:
-        return None
-    out: dict[tuple[int, int], dict[str, Any]] = {}
-    for line, d in site.devices():
-        kept = {k: getattr(d, k) for k in ("serial", "unit", "product") if getattr(d, k) is not None}
-        if kept:
-            out[(line, d.address)] = kept
-    return out or None
+        return False
+    return any(d.serial is not None for _, d in site.devices())
 
 
 def _identify(ctx: click.Context, devices: list[dict]) -> list[dalibus.Identity]:

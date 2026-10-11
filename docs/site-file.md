@@ -41,13 +41,15 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
-`dali-iot site init` keeps the serials an existing file already has.
 `dali-iot site init --identify` also reads each device's memory bank 0 over
 the gateway's WebSocket and records `serial`, `product` (the Lunatone article
 number with its suffix) and, for multi-channel devices that share one serial,
 `unit`. These are informational: `plan` ignores them, but they say *which*
 device an address was, which nothing in the REST API does.
-`dali-iot bus identify` prints the same without writing a file.
+`dali-iot bus identify` prints the same without writing a file. A re-init
+without `--identify` drops any serials the old file had rather than copying
+them, because a re-init usually follows an address change and a serial is
+only true of the address it was read at.
 
 To find out which light an address is, `dali-iot device identify 7` blinks
 it off and on twice and restores it.

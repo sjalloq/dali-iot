@@ -104,9 +104,10 @@ def test_site_init_plan_and_apply_round_trip(run, tmp_path):
     assert _writes(run.fake) == []  # plan is read-only
     assert run("apply", "--yes", "--site", str(path)).exit_code == 0
     assert _writes(run.fake) == [("PUT", "/device/8", {"name": "outside"})]
-    # a plain re-init keeps the serial the file had
-    assert run("site", "init", "--force", "--path", str(path)).exit_code == 0
-    assert "serial: 4242" in path.read_text()
+    # a plain re-init drops serials (addresses may have changed) and says so
+    r = run("site", "init", "--force", "--path", str(path))
+    assert r.exit_code == 0 and "serials" in r.output and "--identify" in r.output
+    assert "serial" not in path.read_text()
 
 
 def test_help_short_option(run):
