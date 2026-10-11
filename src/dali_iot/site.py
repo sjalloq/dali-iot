@@ -13,7 +13,7 @@ identifier the gateway shares with the bus::
             groups: [0]          # managed if given; omit to leave alone
     zones:
       - name: lounge
-        devices: [lounge back, lounge front]     # device names
+        devices: [0, 4]                          # short addresses on line 0 ("1/4" = line 1)
       - name: downstairs
         groups: [0]
       - name: everything
@@ -21,12 +21,13 @@ identifier the gateway shares with the bus::
     schedules:
       - name: outside on
         at: sunset                               # or '22:00', sunset-0:30, sunrise+1:00
-        devices: [outside]
+        devices: [7]
         switch: on
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,29 @@ DEFAULT_PATH = Path("site/site.yaml")
 TYPES = {"fluorescent": 0, "emergency": 1, "dimmer": 4, "led": 6, "relay": 7, "colour": 8}
 _BY_NUMBER = {n: name for name, n in TYPES.items()}
 _PRIORITY = ["colour", "led", "dimmer", "fluorescent", "emergency", "relay"]  # most specific first
+
+
+DeviceRef = int | str  # address on line 0, or "line/address"
+
+
+def parse_ref(ref: DeviceRef) -> tuple[int, int]:
+    """A device reference -> (line, address)."""
+    if isinstance(ref, bool):
+        raise ValueError(f"device reference {ref!r} is not an address")  # noqa: TRY004  (pydantic wants ValueError)
+    if isinstance(ref, int):
+        line, addr = 0, ref
+    else:
+        m = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", str(ref))
+        if not m:
+            raise ValueError(f"device reference {ref!r}; use an address like 7, or line/address like 1/7")
+        line, addr = int(m[1]), int(m[2])
+    if not 0 <= addr <= 63:
+        raise ValueError(f"device reference {ref!r}: address must be 0..63")
+    return line, addr
+
+
+def format_ref(line: int, address: int) -> DeviceRef:
+    return address if line == 0 else f"{line}/{address}"
 
 
 def type_name(dali_types: list[int]) -> str:
@@ -68,7 +92,7 @@ class LineSpec(BaseModel):
 class ZoneSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
-    devices: list[str] = Field(default_factory=list)
+    devices: list[DeviceRef] = Field(default_factory=list)  # see parse_ref
     groups: list[int] = Field(default_factory=list)
     broadcast: list[int] = Field(default_factory=list)  # lines
 
@@ -99,14 +123,22 @@ class Site(BaseModel):
                     raise ValueError(
                         f"device {d.name!r}: unknown type {d.type!r} (one of {', '.join(TYPES)}, or a number)"
                     )
+
+        def check_refs(what: str, refs: list[DeviceRef]) -> None:
+            for ref in refs:
+                try:
+                    key = parse_ref(ref)
+                except ValueError as e:
+                    raise ValueError(f"{what}: {e}") from None
+                if key not in seen_addr:
+                    raise ValueError(f"{what} refers to {ref!r}, which is not under lines")
+
         zone_names: set[str] = set()
         for z in self.zones:
             if z.name in zone_names:
                 raise ValueError(f"zone name {z.name!r} is used twice")
             zone_names.add(z.name)
-            for dname in z.devices:
-                if dname not in seen_names:
-                    raise ValueError(f"zone {z.name!r} refers to unknown device {dname!r}")
+            check_refs(f"zone {z.name!r}", z.devices)
             if not (z.devices or z.groups or z.broadcast):
                 raise ValueError(f"zone {z.name!r} has no targets")
         sched_names: set[str] = set()
@@ -114,9 +146,7 @@ class Site(BaseModel):
             if sc.name in sched_names:
                 raise ValueError(f"schedule name {sc.name!r} is used twice")
             sched_names.add(sc.name)
-            for dname in sc.devices:
-                if dname not in seen_names:
-                    raise ValueError(f"schedule {sc.name!r} refers to unknown device {dname!r}")
+            check_refs(f"schedule {sc.name!r}", sc.devices)
             for zname in sc.zones:
                 if zname not in zone_names:
                     raise ValueError(f"schedule {sc.name!r} refers to unknown zone {zname!r}")
@@ -138,6 +168,7 @@ def from_gateway(devices: list[dict], zones: list[dict], schedules: list[dict] =
     Names are kept exactly as the gateway has them, so a fresh file plans no changes.
     """
     names = {d["id"]: (d.get("name") or f"device {d['id']}") for d in devices}
+    refs = {d["id"]: format_ref(int(d.get("line", 0)), int(d["address"])) for d in devices if "address" in d}
     lines: dict[int, dict[str, Any]] = {}
     for d in sorted(devices, key=lambda d: (d.get("line", 0), d.get("address", 0))):
         lines.setdefault(int(d.get("line", 0)), {"devices": []})["devices"].append(
@@ -153,14 +184,14 @@ def from_gateway(devices: list[dict], zones: list[dict], schedules: list[dict] =
     for z in zones:
         spec: dict[str, Any] = {"name": zone_names[z["id"]]}
         for t in z.get("targets") or []:
-            if t.get("type") == "device" and t.get("id") in names:
-                spec.setdefault("devices", []).append(names[t["id"]])
+            if t.get("type") == "device" and t.get("id") in refs:
+                spec.setdefault("devices", []).append(refs[t["id"]])
             elif t.get("type") == "group":
                 spec.setdefault("groups", []).append(t["id"])
             elif t.get("type") == "broadcast":
                 spec.setdefault("broadcast", []).append(t.get("id") or 0)
         out["zones"].append(spec)
     if schedules:
-        out["schedules"] = [schedule.from_gateway(r, names, zone_names) for r in schedules]
+        out["schedules"] = [schedule.from_gateway(r, refs, zone_names) for r in schedules]
     header = "# Names for this installation. Edit freely; check with: dali-iot plan\n"
     return header + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)

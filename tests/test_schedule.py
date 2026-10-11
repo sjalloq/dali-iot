@@ -33,11 +33,11 @@ def test_parse_at_rejects(bad):
 
 def test_unquoted_time_gets_a_quoting_hint():
     with pytest.raises(ValueError, match="quote the time"):
-        ScheduleSpec.model_validate({"name": "x", "at": 1320, "devices": ["a"], "switch": True})
+        ScheduleSpec.model_validate({"name": "x", "at": 1320, "devices": [0], "switch": True})
 
 
 def _spec(**kw):
-    return ScheduleSpec.model_validate({"name": "x", "at": "sunset", "devices": ["a"], **kw})
+    return ScheduleSpec.model_validate({"name": "x", "at": "sunset", "devices": [0], **kw})
 
 
 @pytest.mark.parametrize(
@@ -107,11 +107,11 @@ def test_canonical_treats_missing_as_default():
 
 
 def test_from_gateway_record():
-    rec = from_gateway(GW_SCHEDULES[0], {8: "outside"}, {})
+    rec = from_gateway(GW_SCHEDULES[0], {8: 7}, {})
     assert rec == {
         "name": "Outside Sunset On",
         "at": "sunset",
-        "devices": ["outside"],
+        "devices": [7],
         "switch": True,
         "days": ["mon", "sun"],
         "months": ["jan", "feb", "mar", "dec"],
@@ -132,7 +132,7 @@ def test_site_round_trips_schedules():
     assert data["schedules"][1] == {
         "name": "Outside 10pm Off",
         "at": "22:00",
-        "devices": ["Line 0 - DALI#07"],
+        "devices": [7],
         "switch": False,
     }
     site = Site.model_validate(data)
@@ -143,13 +143,13 @@ def test_site_round_trips_schedules():
 def test_site_rejects_unknown_refs_and_duplicates():
     base = {
         "lines": {0: {"devices": [{"name": "a", "address": 0}]}},
-        "zones": [{"name": "z", "devices": ["a"]}],
+        "zones": [{"name": "z", "devices": [0]}],
     }
     s = {"name": "s", "at": "sunset", "switch": True}
-    with pytest.raises(ValueError, match="unknown device"):
-        Site.model_validate({**base, "schedules": [{**s, "devices": ["nope"]}]})
+    with pytest.raises(ValueError, match="not under lines"):
+        Site.model_validate({**base, "schedules": [{**s, "devices": [5]}]})
     with pytest.raises(ValueError, match="unknown zone"):
         Site.model_validate({**base, "schedules": [{**s, "zones": ["nope"]}]})
     with pytest.raises(ValueError, match="used twice"):
-        Site.model_validate({**base, "schedules": [{**s, "zones": ["z"]}, {**s, "devices": ["a"]}]})
+        Site.model_validate({**base, "schedules": [{**s, "zones": ["z"]}, {**s, "devices": [0]}]})
     assert schedule.DAYS[0] == "mon"

@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 from .client import Client
 from .schedule import canonical
-from .site import Site, type_name
+from .site import Site, parse_ref, type_name
 
 
 @dataclasses.dataclass
@@ -46,7 +46,7 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
     gw_zones = client.zones()
 
     # devices: matched by (line, address); name and, when given, groups
-    ids: dict[str, int] = {}  # site name -> gateway id, for zone targets
+    ids: dict[tuple[int, int], int] = {}  # (line, address) -> gateway id, for targets
     claimed: set[int] = set()
     for line, spec in site.devices():
         name = spec.name
@@ -66,7 +66,7 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                 )
             )
             continue
-        ids[name] = d["id"]
+        ids[(line, spec.address)] = d["id"]
         claimed.add(d["id"])
         if d.get("name") != name:
             changes.append(
@@ -105,13 +105,11 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
     site_zone_names = {z.name for z in site.zones}
     for z in site.zones:
         name = z.name
-        missing = [n for n in z.devices if n not in ids]
+        missing = [r for r in z.devices if parse_ref(r) not in ids]
         if missing:
-            changes.append(
-                Change("error", f"zone {name}", f"skipped: device(s) {', '.join(missing)} unresolved")
-            )
+            changes.append(Change("error", f"zone {name}", f"skipped: device(s) {_refs(missing)} unresolved"))
             continue
-        want = [{"type": "device", "id": ids[n]} for n in z.devices]
+        want = [{"type": "device", "id": ids[parse_ref(r)]} for r in z.devices]
         want += [{"type": "group", "id": g} for g in z.groups]
         want += [{"type": "broadcast", "id": line} for line in z.broadcast]
         gz = gw_by_name.get(name)
@@ -156,7 +154,7 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
     zone_ids = {name: gz["id"] for name, gz in gw_by_name.items()}
 
     def targets_for(sc, zone_ids: dict[str, int]) -> list[dict]:
-        t = [{"type": "device", "id": ids[n]} for n in sc.devices]
+        t = [{"type": "device", "id": ids[parse_ref(r)]} for r in sc.devices]
         t += [{"type": "zone", "id": zone_ids[n]} for n in sc.zones]
         t += [{"type": "group", "id": g} for g in sc.groups]
         t += [{"type": "broadcast", "id": line} for line in sc.broadcast]
@@ -172,10 +170,10 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
     site_sched_names = {sc.name for sc in site.schedules}
     for sc in site.schedules:
         name = sc.name
-        missing = [n for n in sc.devices if n not in ids]
+        missing = [r for r in sc.devices if parse_ref(r) not in ids]
         if missing:
             changes.append(
-                Change("error", f"schedule {name}", f"skipped: device(s) {', '.join(missing)} unresolved")
+                Change("error", f"schedule {name}", f"skipped: device(s) {_refs(missing)} unresolved")
             )
             continue
         pending = [n for n in sc.zones if n not in zone_ids]
@@ -219,7 +217,11 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
     return changes
 
 
+def _refs(refs) -> str:
+    return ", ".join(f"A{r}" if isinstance(r, int) else str(r) for r in refs)
+
+
 def _names(sc) -> str:
-    parts = list(sc.devices) + [f"zone {z}" for z in sc.zones]
+    parts = [f"A{r}" if isinstance(r, int) else str(r) for r in sc.devices] + [f"zone {z}" for z in sc.zones]
     parts += [f"group {g}" for g in sc.groups] + [f"line {line}" for line in sc.broadcast]
     return ", ".join(parts)

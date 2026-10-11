@@ -69,7 +69,7 @@ def test_plan_is_read_only_and_lists_changes(client, fake):
             {"name": "Bathroom", "address": 8},
         ],
         [
-            {"name": "wet", "devices": ["outside"]},
+            {"name": "wet", "devices": [7]},
             {"name": "all", "broadcast": [0]},
             {"name": "broadcast", "broadcast": [0]},
         ],
@@ -91,7 +91,7 @@ def test_type_mismatch_and_missing_address_are_errors_and_block(client, fake):
     _gw(fake)
     site = _site(
         [{"name": "outside", "address": 7, "type": "dimmer"}, {"name": "ghost", "address": 20}],
-        [{"name": "z", "devices": ["outside"]}],
+        [{"name": "z", "devices": [7]}],
     )
     changes = plan.build(site, client)
     errors = [c for c in changes if c.op == "error"]
@@ -105,7 +105,7 @@ def test_apply_sends_the_right_requests(client, fake):
     _gw(fake)
     site = _site(
         [{"name": "outside", "address": 7}],
-        [{"name": "wet", "devices": ["outside"]}, {"name": "all", "groups": [0]}],
+        [{"name": "wet", "devices": [7]}, {"name": "all", "groups": [0]}],
     )
     for c in plan.build(site, client, prune=True):
         if c.apply:
@@ -130,7 +130,7 @@ def test_unmanaged_are_notes_without_prune(client, fake):
 
 
 def _sched(**kw):
-    return {"name": "Outside 10pm Off", "at": "22:00", "devices": ["outside"], "switch": False, **kw}
+    return {"name": "Outside 10pm Off", "at": "22:00", "devices": [7], "switch": False, **kw}
 
 
 def test_schedules_matching_the_gateway_plan_nothing(client, fake):
@@ -189,7 +189,7 @@ def test_schedule_create_resolves_new_zone_at_apply_time(client, fake):
     _gw(fake, schedules=[])
     site = _site(
         [{"name": "outside", "address": 7}],
-        [{"name": "wet", "devices": ["outside"]}, {"name": "new", "groups": [3]}],
+        [{"name": "wet", "devices": [7]}, {"name": "new", "groups": [3]}],
         [{"name": "dusk", "at": "sunset-0:30", "zones": ["new", "wet"], "level": 40, "fade": 2.5}],
     )
     changes = plan.build(site, client)

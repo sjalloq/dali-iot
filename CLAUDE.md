@@ -29,7 +29,7 @@ This file is how to work here.
   payload helpers (`off_features`, `on_features`, `schedule_action`)
 - `src/dali_iot/discover.py` — LAN scan on real up interfaces: UDP `discovery` to 5555; broadcast first, confirmed unicast sweep as fallback
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
-- `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; `site init` generator
+- `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; device references are addresses (`parse_ref`), never names or gateway ids; `site init` generator
 - `src/dali_iot/schedule.py` — schedule intent (`at`, targets, switch/level/scene/features, days, months) <-> gateway scheduler body; `canonical()` for diffing
 - `src/dali_iot/plan.py` — diff site vs gateway (devices, zones, schedules) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI

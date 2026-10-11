@@ -13,7 +13,7 @@ SITE = {
         }
     },
     "zones": [
-        {"name": "z", "devices": ["a", "b"]},
+        {"name": "z", "devices": [0, "0/1"]},
         {"name": "g", "groups": [0]},
         {"name": "all", "broadcast": [0]},
     ],
@@ -25,7 +25,7 @@ def test_layout():
     assert [(line, d.name) for line, d in s.devices()] == [(0, "a"), (0, "b")]
     a = s.lines[0].devices[0]
     assert a.groups is None and a.type is None
-    assert s.zones[0].devices == ["a", "b"]
+    assert s.zones[0].devices == [0, "0/1"]
     assert s.zones[2].broadcast == [0]
 
 
@@ -51,7 +51,9 @@ def _line(*devs):
         (_line({"name": "", "address": 1}), "at least 1 character"),
         (_line({"address": 1}), "name"),
         (_line({"name": "a", "address": 1, "typo": 2}), "extra"),
-        ({"zones": [{"name": "z", "devices": ["nope"]}]}, "unknown device"),
+        ({"zones": [{"name": "z", "devices": [9]}]}, "not under lines"),
+        ({"zones": [{"name": "z", "devices": ["x"]}]}, "use an address"),
+        ({"zones": [{"name": "z", "devices": [64]}]}, "0..63"),
         ({"zones": [{"name": "z"}]}, "no targets"),
         ({"zones": [{"name": "z", "groups": [0]}, {"name": "z", "groups": [1]}]}, "used twice"),
     ],
@@ -83,5 +85,5 @@ def test_from_gateway_round_trips():
     }
     s = Site.model_validate(data)
     assert s.zones[0].name == "broadcast" and s.zones[0].broadcast == [0]
-    assert s.zones[2].devices == ["Bathroom"]
+    assert s.zones[2].devices == [8]
     assert not any(" # " in line for line in text.splitlines()[1:])  # no comments: types are keys

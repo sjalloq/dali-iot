@@ -68,7 +68,7 @@ class ScheduleSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
     at: str
-    devices: list[str] = Field(default_factory=list)
+    devices: list[int | str] = Field(default_factory=list)  # addresses; see site.parse_ref
     zones: list[str] = Field(default_factory=list)
     groups: list[int] = Field(default_factory=list)
     broadcast: list[int] = Field(default_factory=list)  # lines
@@ -152,14 +152,17 @@ def canonical(rec: dict) -> dict[str, Any]:
     }
 
 
-def from_gateway(rec: dict, device_names: dict[int, str], zone_names: dict[int, str]) -> dict[str, Any]:
-    """A gateway scheduler record as a site-file entry (plain dict, in file order)."""
+def from_gateway(rec: dict, device_refs: dict[int, Any], zone_names: dict[int, str]) -> dict[str, Any]:
+    """A gateway scheduler record as a site-file entry (plain dict, in file order).
+
+    ``device_refs`` maps gateway device id to the site file's address reference.
+    """
     c = canonical(rec)
     out: dict[str, Any] = {"name": rec.get("name") or f"schedule {rec.get('id')}"}
     out["at"] = format_at(c["mode"], *c["time"])
     for kind, tid in c["targets"]:
-        if kind == "device" and tid in device_names:
-            out.setdefault("devices", []).append(device_names[tid])
+        if kind == "device" and tid in device_refs:
+            out.setdefault("devices", []).append(device_refs[tid])
         elif kind == "zone" and tid in zone_names:
             out.setdefault("zones", []).append(zone_names[tid])
         elif kind == "group":

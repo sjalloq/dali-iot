@@ -31,7 +31,7 @@ lines:
 
 zones:
   - name: lounge
-    devices: [lounge back, lounge front]    # device names
+    devices: [0, 4]                         # short addresses ("1/4" = line 1, address 4)
   - name: downstairs
     groups: [0]                             # DALI groups, and/or devices
   - name: everything
@@ -39,6 +39,11 @@ zones:
 ```
 
 Names must be unique across all devices, and across all zones.
+
+Zones and schedules refer to devices by short address, never by name: an
+integer is an address on line 0, and `"line/address"` reaches other lines.
+Names are labels you can change freely without breaking anything. Every
+referenced address must appear under `lines`, so the type check covers it.
 
 ### Groups and zones
 
@@ -56,11 +61,11 @@ as a unit, add a zone that targets it.
 schedules:
   - name: outside on
     at: sunset                # when
-    devices: [outside]        # to whom
+    devices: [7]              # to whom
     switch: on                # what
   - name: outside off
     at: '22:00'
-    devices: [outside]
+    devices: [7]
     switch: off
   - name: evening lounge
     at: sunset-0:30
@@ -75,8 +80,8 @@ schedules:
 - `at` is a time of day as `'HH:MM'` or `'HH:MM:SS'`, or `sunrise`/`sunset`
   with an optional `-H:MM`/`+H:MM` offset. Quote clock times: an unquoted
   `22:00` is a number to YAML and is rejected with a hint.
-- Targets are any mix of `devices` and `zones` (names from this file),
-  `groups` (DALI group numbers) and `broadcast` (line numbers).
+- Targets are any mix of `devices` (addresses), `zones` (names from this
+  file), `groups` (DALI group numbers) and `broadcast` (line numbers).
 - The action is exactly one of `switch: on|off`, `level: 0..100` (with an
   optional `fade` in seconds), `scene: 0..15`, or `features:` with a raw
   gateway feature dict for anything else.
