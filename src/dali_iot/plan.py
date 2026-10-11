@@ -3,6 +3,7 @@
 A plan is a list of changes, each of which knows how to apply itself. Nothing
 touches the gateway until ``Change.apply`` is called, so ``plan`` is read-only.
 Devices are matched by line and short address; the gateway id is looked up.
+Zones and schedules are matched by name.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import dataclasses
 from collections.abc import Callable
 
 from .client import Client
+from .schedule import canonical
 from .site import Site, type_name
 
 
@@ -148,4 +150,76 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                 changes.append(
                     Change("note", f"zone {name}", f"id {gz['id']} is not in the site file (--prune deletes)")
                 )
+
+    # schedules: by name. Zone targets may be zones this plan creates, so they
+    # are resolved again at apply time.
+    zone_ids = {name: gz["id"] for name, gz in gw_by_name.items()}
+
+    def targets_for(sc, zone_ids: dict[str, int]) -> list[dict]:
+        t = [{"type": "device", "id": ids[n]} for n in sc.devices]
+        t += [{"type": "zone", "id": zone_ids[n]} for n in sc.zones]
+        t += [{"type": "group", "id": g} for g in sc.groups]
+        t += [{"type": "broadcast", "id": line} for line in sc.broadcast]
+        return t
+
+    def body_now(sc) -> dict:
+        fresh = {str(z.get("name")): z["id"] for z in client.zones()}
+        return sc.body(targets_for(sc, fresh))
+
+    gw_sched: dict[str, dict] = {}
+    for r in client.automations("schedule"):
+        gw_sched.setdefault(str(r.get("name")), r)
+    site_sched_names = {sc.name for sc in site.schedules}
+    for sc in site.schedules:
+        name = sc.name
+        missing = [n for n in sc.devices if n not in ids]
+        if missing:
+            changes.append(
+                Change("error", f"schedule {name}", f"skipped: device(s) {', '.join(missing)} unresolved")
+            )
+            continue
+        pending = [n for n in sc.zones if n not in zone_ids]
+        summary = f"{sc.at} -> {sc.action_features()} on " + _names(sc)
+        gr = gw_sched.get(name)
+        if gr is None:
+            changes.append(
+                Change(
+                    "create",
+                    f"schedule {name}",
+                    summary,
+                    lambda s=sc: client.create_automation("schedule", body_now(s)),
+                )
+            )
+        elif pending or canonical(gr) != canonical(sc.body(targets_for(sc, zone_ids))):
+            changes.append(
+                Change(
+                    "update",
+                    f"schedule {name}",
+                    summary,
+                    lambda i=gr["id"], s=sc: client.update_automation("schedule", i, body_now(s)),
+                )
+            )
+    for name, gr in gw_sched.items():
+        if name not in site_sched_names:
+            if prune:
+                changes.append(
+                    Change(
+                        "delete",
+                        f"schedule {name}",
+                        f"id {gr['id']}",
+                        lambda i=gr["id"]: client.delete_automation("schedule", i),
+                    )
+                )
+            else:
+                changes.append(
+                    Change(
+                        "note", f"schedule {name}", f"id {gr['id']} is not in the site file (--prune deletes)"
+                    )
+                )
     return changes
+
+
+def _names(sc) -> str:
+    parts = list(sc.devices) + [f"zone {z}" for z in sc.zones]
+    parts += [f"group {g}" for g in sc.groups] + [f"line {line}" for line in sc.broadcast]
+    return ", ".join(parts)

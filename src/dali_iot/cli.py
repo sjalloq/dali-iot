@@ -147,7 +147,7 @@ def dump(ctx: click.Context, out: Path) -> None:
 
 @main.group()
 def site() -> None:
-    """The site file: your names for devices and zones."""
+    """The site file: your names for devices and zones, and your schedules."""
 
 
 @site.command("init")
@@ -160,7 +160,7 @@ def site_init(ctx: click.Context, path: Path, force: bool) -> None:
         raise click.ClickException(f"{path} exists; pass --force to overwrite")
     c = _client(ctx)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(sitefile.from_gateway(c.devices(), c.zones()))
+    path.write_text(sitefile.from_gateway(c.devices(), c.zones(), c.automations("schedule")))
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
 
 
@@ -189,7 +189,7 @@ def _print_plan(changes: list[planner.Change]) -> int:
 @click.option(
     "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
 )
-@click.option("--prune", is_flag=True, help="Also delete zones that are not in the site file")
+@click.option("--prune", is_flag=True, help="Also delete zones and schedules that are not in the site file")
 @click.pass_context
 def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
     """Show what apply would change on the gateway. Read-only."""
@@ -200,7 +200,7 @@ def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
 @click.option(
     "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
 )
-@click.option("--prune", is_flag=True, help="Also delete zones that are not in the site file")
+@click.option("--prune", is_flag=True, help="Also delete zones and schedules that are not in the site file")
 @click.option("--yes", "-y", is_flag=True, help="Apply without asking")
 @click.pass_context
 def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:

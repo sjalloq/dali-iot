@@ -1,6 +1,7 @@
 # Site file
 
-`dali-iot` keeps your names for the gateway's devices and zones in a YAML
+`dali-iot` keeps your names for the gateway's devices and zones, and your
+schedules, in a YAML
 site file, `site/site.yaml` by default. The `site/` directory is git-ignored
 because the file describes one installation. `--site PATH` points elsewhere.
 
@@ -49,6 +50,42 @@ group only appears in the file as a zone if someone created a zone for it,
 so a group can have members and still have no zone. To control such a group
 as a unit, add a zone that targets it.
 
+### Schedules
+
+```yaml
+schedules:
+  - name: outside on
+    at: sunset                # when
+    devices: [outside]        # to whom
+    switch: on                # what
+  - name: outside off
+    at: '22:00'
+    devices: [outside]
+    switch: off
+  - name: evening lounge
+    at: sunset-0:30
+    zones: [lounge]
+    level: 40
+    fade: 2.5
+    days: [mon, tue, wed, thu, fri]
+    months: [oct, nov, dec, jan, feb]
+    enabled: false
+```
+
+- `at` is a time of day as `'HH:MM'` or `'HH:MM:SS'`, or `sunrise`/`sunset`
+  with an optional `-H:MM`/`+H:MM` offset. Quote clock times: an unquoted
+  `22:00` is a number to YAML and is rejected with a hint.
+- Targets are any mix of `devices` and `zones` (names from this file),
+  `groups` (DALI group numbers) and `broadcast` (line numbers).
+- The action is exactly one of `switch: on|off`, `level: 0..100` (with an
+  optional `fade` in seconds), `scene: 0..15`, or `features:` with a raw
+  gateway feature dict for anything else.
+- `days` (`mon`..`sun`) and `months` (`jan`..`dec`) default to all.
+  `enabled` defaults to true.
+
+A date range (`activePeriod`) or day-of-month list (`activeDays`) on the
+gateway is not modelled: it is neither written nor compared.
+
 ### Types
 
 `type` names what the gateway reports in `daliTypes`:
@@ -76,6 +113,9 @@ over `led`. Anything else is written as the raw number.
 - **Zones** are matched by name: missing ones are created, differing targets
   are updated. Zones the file does not mention are notes and left alone;
   `--prune` deletes them.
+- **Schedules** are matched by name the same way. An update sends the whole
+  schedule. A schedule may target a zone the same plan creates; the zone id
+  is looked up when the schedule change runs, so apply order works out.
 - `plan` only reads. `apply` prints the plan, asks once, then runs each
   change in order; `--yes` skips the question. Errors never block the other
   changes.

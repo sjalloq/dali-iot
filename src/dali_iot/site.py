@@ -1,4 +1,4 @@
-"""The site file: your names for the gateway's devices and zones.
+"""The site file: your names for the gateway's devices and zones, and your schedules.
 
 Kept outside git by default (``site/`` is ignored) because it describes one
 installation. Devices are keyed by DALI line and short address, the only
@@ -18,6 +18,11 @@ identifier the gateway shares with the bus::
         groups: [0]
       - name: everything
         broadcast: [0]                           # lines
+    schedules:
+      - name: outside on
+        at: sunset                               # or '22:00', sunset-0:30, sunrise+1:00
+        devices: [outside]
+        switch: on
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from . import schedule
 
 DEFAULT_PATH = Path("site/site.yaml")
 
@@ -70,6 +77,7 @@ class Site(BaseModel):
     model_config = ConfigDict(extra="forbid")
     lines: dict[int, LineSpec] = Field(default_factory=dict)
     zones: list[ZoneSpec] = Field(default_factory=list)
+    schedules: list[schedule.ScheduleSpec] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _check(self) -> Site:
@@ -101,6 +109,17 @@ class Site(BaseModel):
                     raise ValueError(f"zone {z.name!r} refers to unknown device {dname!r}")
             if not (z.devices or z.groups or z.broadcast):
                 raise ValueError(f"zone {z.name!r} has no targets")
+        sched_names: set[str] = set()
+        for sc in self.schedules:
+            if sc.name in sched_names:
+                raise ValueError(f"schedule name {sc.name!r} is used twice")
+            sched_names.add(sc.name)
+            for dname in sc.devices:
+                if dname not in seen_names:
+                    raise ValueError(f"schedule {sc.name!r} refers to unknown device {dname!r}")
+            for zname in sc.zones:
+                if zname not in zone_names:
+                    raise ValueError(f"schedule {sc.name!r} refers to unknown zone {zname!r}")
         return self
 
     def devices(self) -> list[tuple[int, DeviceSpec]]:
@@ -113,7 +132,7 @@ def load(path: Path = DEFAULT_PATH) -> Site:
         return Site.model_validate(yaml.safe_load(f) or {})
 
 
-def from_gateway(devices: list[dict], zones: list[dict]) -> str:
+def from_gateway(devices: list[dict], zones: list[dict], schedules: list[dict] = ()) -> str:
     """A starting site file from what the gateway holds now, as YAML text.
 
     Names are kept exactly as the gateway has them, so a fresh file plans no changes.
@@ -130,8 +149,9 @@ def from_gateway(devices: list[dict], zones: list[dict]) -> str:
             }
         )
     out: dict[str, Any] = {"lines": lines, "zones": []}
+    zone_names = {z["id"]: (z.get("name") or f"zone {z['id']}") for z in zones}
     for z in zones:
-        spec: dict[str, Any] = {"name": z.get("name") or f"zone {z['id']}"}
+        spec: dict[str, Any] = {"name": zone_names[z["id"]]}
         for t in z.get("targets") or []:
             if t.get("type") == "device" and t.get("id") in names:
                 spec.setdefault("devices", []).append(names[t["id"]])
@@ -140,5 +160,7 @@ def from_gateway(devices: list[dict], zones: list[dict]) -> str:
             elif t.get("type") == "broadcast":
                 spec.setdefault("broadcast", []).append(t.get("id") or 0)
         out["zones"].append(spec)
+    if schedules:
+        out["schedules"] = [schedule.from_gateway(r, names, zone_names) for r in schedules]
     header = "# Names for this installation. Edit freely; check with: dali-iot plan\n"
     return header + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)

@@ -29,14 +29,15 @@ This file is how to work here.
   payload helpers (`off_features`, `on_features`, `schedule_action`)
 - `src/dali_iot/discover.py` — LAN scan on real up interfaces: UDP `discovery` to 5555; broadcast first, confirmed unicast sweep as fallback
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
-- `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones; `site init` generator
-- `src/dali_iot/plan.py` — diff site vs gateway into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
+- `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; `site init` generator
+- `src/dali_iot/schedule.py` — schedule intent (`at`, targets, switch/level/scene/features, days, months) <-> gateway scheduler body; `canonical()` for diffing
+- `src/dali_iot/plan.py` — diff site vs gateway (devices, zones, schedules) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
   Its header names the spec file, and so the firmware version, it came from
 - `spec/` — git-ignored; `dali-iot gateway spec` downloads `openapi-<firmware>.json` here
 - `tests/` — pytest; `conftest.py` has a fake session, no gateway needed
-- `docs/` — Sphinx (MyST, furo); `docs/site-file.md` the site format, `docs/gateway-api.md` API gotchas
+- `docs/` — Sphinx (MyST, furo); `docs/site-file.md` the site format (devices, zones, schedules), `docs/gateway-api.md` API gotchas
 - `site/` — git-ignored; the user's own site file lives here
 
 ## Commands
