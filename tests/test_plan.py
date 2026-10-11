@@ -113,6 +113,7 @@ def test_apply_sends_the_right_requests(client, fake):
     writes = [(m, p, j) for m, p, j, _ in fake.calls if m != "GET"]
     assert writes == [
         ("PUT", "/device/8", {"name": "outside"}),
+        ("DELETE", "/device/9", None),
         ("PUT", "/zone/3", {"name": "wet", "targets": [{"type": "device", "id": 8}]}),
         ("POST", "/zone", {"name": "all", "targets": [{"type": "group", "id": 0}]}),
         ("DELETE", "/zone/1", None),

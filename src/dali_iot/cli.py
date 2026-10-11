@@ -9,6 +9,7 @@ from typing import Any
 
 import click
 
+from . import check as checker
 from . import config, discover
 from . import plan as planner
 from . import site as sitefile
@@ -164,6 +165,23 @@ def site_init(ctx: click.Context, path: Path, force: bool) -> None:
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
 
 
+@site.command("check")
+@click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
+@click.pass_context
+def site_check(ctx: click.Context, path: Path) -> None:
+    """Does the file still match the devices on the gateway? Lost, new and moved devices.
+
+    Read-only. Exits 1 when something differs. Names, zones and schedules are plan's job.
+    """
+    findings = checker.compare(_load_site(path), _client(ctx).devices())
+    for f in findings:
+        click.echo(str(f))
+    if findings:
+        click.echo(f"{len(findings)} difference(s)", err=True)
+        ctx.exit(1)
+    click.echo("site file matches the gateway's devices", err=True)
+
+
 def _load_site(path: Path) -> sitefile.Site:
     try:
         return sitefile.load(path)
@@ -189,7 +207,11 @@ def _print_plan(changes: list[planner.Change]) -> int:
 @click.option(
     "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
 )
-@click.option("--prune", is_flag=True, help="Also delete zones and schedules that are not in the site file")
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Also delete device records, zones and schedules that are not in the site file",
+)
 @click.pass_context
 def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
     """Show what apply would change on the gateway. Read-only."""
@@ -200,7 +222,11 @@ def plan_cmd(ctx: click.Context, path: Path, prune: bool) -> None:
 @click.option(
     "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
 )
-@click.option("--prune", is_flag=True, help="Also delete zones and schedules that are not in the site file")
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Also delete device records, zones and schedules that are not in the site file",
+)
 @click.option("--yes", "-y", is_flag=True, help="Apply without asking")
 @click.pass_context
 def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:

@@ -7,6 +7,7 @@ because the file describes one installation. `--site PATH` points elsewhere.
 
 ```
 dali-iot site init     # starting file from what the gateway holds now
+dali-iot site check    # do the file's devices still match the gateway's? (read-only)
 dali-iot plan          # what apply would change (read-only)
 dali-iot apply         # make the gateway match the file
 ```
@@ -114,7 +115,8 @@ over `led`. Anything else is written as the raw number.
   does not touch it, since the address probably no longer means what the
   file thinks. Otherwise a different name is a `rename` and, when `groups`
   is given and differs, a `groups` change. Devices the file does not mention
-  are listed as notes.
+  are listed as notes; `--prune` deletes their gateway records, which never
+  touches the device itself.
 - **Zones** are matched by name: missing ones are created, differing targets
   are updated. Zones the file does not mention are notes and left alone;
   `--prune` deletes them.
@@ -124,6 +126,32 @@ over `led`. Anything else is written as the raw number.
 - `plan` only reads. `apply` prints the plan, asks once, then runs each
   change in order; `--yes` skips the question. Errors never block the other
   changes.
+
+## When addresses change
+
+The gateway keys its device records by line and address and never
+reconciles them: readdress a lamp with another tool and rescan, and the
+gateway keeps a stale record at the old address and adds a fresh one, with a
+factory name and no zone or schedule memberships, at the new. The REST API
+exposes no serial number and no reliable liveness flag, so nothing can tell
+a stale record from a real device automatically.
+
+`dali-iot site check` compares the file's device inventory with the
+gateway's and reports:
+
+- `lost`: the file has a device at an address the gateway has nothing at.
+- `new`: the gateway has a record the file does not mention. When file
+  devices share its type and groups, they are listed as candidates, since
+  both live in the device and survive a readdress.
+- `moved`: a `lost` and a `new` with the same type and groups, paired.
+- `type`: the file and the gateway disagree about what is at an address.
+
+Each finding comes with the edit to make. The usual readdress workflow is:
+change the address, rescan, run `site check`, change `address:` and any
+`devices: [...]` references in the file, then `apply --prune` to drop the
+stale record. Zone and schedule targets follow, because they are resolved
+from addresses when the change runs. `check` exits 1 when anything differs,
+so it can gate a script.
 
 The site file covers what the REST API covers: control gear, meaning lamps
 and relays. Control devices such as push-button couplers are not visible to

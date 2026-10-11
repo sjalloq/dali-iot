@@ -31,6 +31,7 @@ This file is how to work here.
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
 - `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; device references are addresses (`parse_ref`), never names or gateway ids; `site init` generator
 - `src/dali_iot/schedule.py` — schedule intent (`at`, targets, switch/level/scene/features, days, months) <-> gateway scheduler body; `canonical()` for diffing
+- `src/dali_iot/check.py` — `site check`: device inventory diff (lost/new/moved/type) with the edit to make; read-only
 - `src/dali_iot/plan.py` — diff site vs gateway (devices, zones, schedules) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.

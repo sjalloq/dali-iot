@@ -53,7 +53,11 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
         d = by_addr.get((line, spec.address))
         if d is None:
             changes.append(
-                Change("error", f"device {name}", f"nothing at line {line} A{spec.address} on the gateway")
+                Change(
+                    "error",
+                    f"device {name}",
+                    f"nothing at line {line} A{spec.address} on the gateway (try: dali-iot site check)",
+                )
             )
             continue
         gw_type = type_name(d.get("daliTypes") or [])
@@ -90,13 +94,24 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                 )
     for d in sorted(gw_devices, key=lambda d: (d.get("line", 0), d.get("address", 0))):
         if d["id"] not in claimed:
-            changes.append(
-                Change(
-                    "note",
-                    f"device {d.get('name')!r}",
-                    f"{_where(d)} {type_name(d.get('daliTypes') or [])}: not in the site file",
+            kind = type_name(d.get("daliTypes") or [])
+            if prune:
+                changes.append(
+                    Change(
+                        "delete",
+                        f"device {d.get('name')!r}",
+                        f"{_where(d)} {kind}: gateway record id {d['id']} (the device itself is untouched)",
+                        lambda i=d["id"]: client.delete(f"/device/{i}"),
+                    )
                 )
-            )
+            else:
+                changes.append(
+                    Change(
+                        "note",
+                        f"device {d.get('name')!r}",
+                        f"{_where(d)} {kind}: not in the site file (--prune deletes the record; site check explains)",
+                    )
+                )
 
     # zones: by name
     gw_by_name: dict[str, dict] = {}
