@@ -1,0 +1,45 @@
+[project]
+name = "dali-iot"
+version = "0.1.0"
+description = "Configure and drive a Lunatone DALI-2 IoT gateway: intent model, YAML + apply, web UI"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2",
+    "pyyaml>=6",
+    "requests>=2.31",
+]
+
+[project.scripts]
+dali-iot = "dali_iot.cli:main"
+
+[dependency-groups]
+docs = [
+    "sphinx",
+    "myst-parser",
+    "furo",
+]
+dev = [
+    "pytest",
+    "ruff",
+    "datamodel-code-generator",
+    "types-requests",
+    "types-PyYAML",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+extend-select = ["I"]
+per-file-ignores = { "src/dali_iot/api_models.py" = ["ALL"] }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

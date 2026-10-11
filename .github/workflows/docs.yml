@@ -1,0 +1,29 @@
+# Publishes the docs to the LAN docs server on every push to main. The flow
+# itself lives in sjalloq/pve (publish-docs.yml); this file is the same in
+# every repo and needs no editing. The repo's side of the contract:
+# `make docs` writes HTML to docs/build/html/ with warnings as errors.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner to build and publish on
+        type: choice
+        options: [docs, docs-test]
+        default: docs
+
+jobs:
+  publish:
+    # Pushes have no inputs, so they always land on the real server.
+    uses: sjalloq/pve/.github/workflows/publish-docs.yml@main
+    with:
+      runner: ${{ inputs.runner || 'docs' }}

@@ -1,0 +1,18 @@
+# Source this file:  source sourceme
+# Creates .venv with uv (all groups) if it doesn't exist, then activates it.
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    echo "sourceme must be sourced, not run: source ${0}" >&2
+    exit 1
+fi
+
+_di_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ ! -x "$_di_root/.venv/bin/python" ]]; then
+    echo "Creating $_di_root/.venv"
+    (cd "$_di_root" && uv sync --all-groups) || { unset _di_root; return 1; }
+fi
+
+# shellcheck disable=SC1091
+source "$_di_root/.venv/bin/activate"
+unset _di_root

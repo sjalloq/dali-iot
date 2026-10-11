@@ -1,0 +1,12 @@
+# Python / uv
+__pycache__/
+.venv/
+dist/
+
+# Sphinx
+docs/build/
+
+# Downloaded from the gateway (dali-iot gateway spec / dump); regenerate, don't commit
+spec/
+dump/
+*.local.yaml
