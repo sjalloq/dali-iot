@@ -73,7 +73,7 @@ and a bus monitor stream. dali-iot does not use it.
 | false | true | reloads the device list; nothing is readdressed |
 
 Only the last is safe to run casually, and it is what `dali-iot gateway
-rescan` and `site check` use. Poll `GET /dali/scan` until `status` is `done`;
+rescan` runs. Poll `GET /dali/scan` until `status` is `done`;
 the reply carries the scan `id`, so a stale `done` from an earlier scan can
 be told apart from the new one.
 

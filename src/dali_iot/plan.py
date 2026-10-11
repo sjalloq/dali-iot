@@ -56,7 +56,7 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                 Change(
                     "error",
                     f"device {name}",
-                    f"nothing at line {line} A{spec.address} on the gateway (try: dali-iot site check)",
+                    f"nothing at line {line} A{spec.address} on the gateway",
                 )
             )
             continue
@@ -109,7 +109,7 @@ def build(site: Site, client: Client, prune: bool = False) -> list[Change]:
                     Change(
                         "note",
                         f"device {d.get('name')!r}",
-                        f"{_where(d)} {kind}: not in the site file (--prune deletes the record; site check explains)",
+                        f"{_where(d)} {kind}: not in the site file (--prune deletes the record)",
                     )
                 )
 

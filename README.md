@@ -9,7 +9,6 @@ source sourceme
 dali-iot gateway scan --save   # or: dali-iot gateway set-url http://<gateway-ip>
 dali-iot dump                  # everything the gateway holds -> dump/*.json
 dali-iot site init             # site/site.yaml from the gateway; name your devices and zones
-dali-iot site check            # rescan the bus; do the file's devices still match?
 dali-iot plan && dali-iot apply
 dali-iot all-off               # broadcast off
 dali-iot on --zone 2 --level 60

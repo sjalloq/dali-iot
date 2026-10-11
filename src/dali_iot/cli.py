@@ -9,7 +9,6 @@ from typing import Any
 
 import click
 
-from . import check as checker
 from . import config, discover
 from . import plan as planner
 from . import site as sitefile
@@ -188,28 +187,6 @@ def site_init(ctx: click.Context, path: Path, force: bool) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(sitefile.from_gateway(c.devices(), c.zones(), c.automations("schedule")))
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
-
-
-@site.command("check")
-@click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
-@click.option("--no-scan", is_flag=True, help="Trust the gateway's current list; do not rescan the bus")
-@click.pass_context
-def site_check(ctx: click.Context, path: Path, no_scan: bool) -> None:
-    """Does the file still match the devices on the bus? Lost, new and moved devices.
-
-    Rescans the bus first (no address is changed) so the gateway's list is current.
-    Exits 1 when something differs. Names, zones and schedules are plan's job.
-    """
-    site = _load_site(path)
-    c = _client(ctx)
-    scan = None if no_scan else _rescan(c)
-    findings = checker.compare(site, c.devices(), scan)
-    for f in findings:
-        click.echo(str(f))
-    if findings:
-        click.echo(f"{len(findings)} difference(s)", err=True)
-        ctx.exit(1)
-    click.echo("site file matches the gateway's devices", err=True)
 
 
 def _load_site(path: Path) -> sitefile.Site:

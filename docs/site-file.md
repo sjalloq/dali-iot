@@ -7,7 +7,6 @@ because the file describes one installation. `--site PATH` points elsewhere.
 
 ```
 dali-iot site init     # starting file from what the gateway holds now
-dali-iot site check    # rescan the bus; do the file's devices still match?
 dali-iot plan          # what apply would change (read-only)
 dali-iot apply         # make the gateway match the file
 ```
@@ -127,38 +126,28 @@ over `led`. Anything else is written as the raw number.
   change in order; `--yes` skips the question. Errors never block the other
   changes.
 
-## When addresses change
+## Changing addresses with another tool
 
-The gateway keys its device records by line and address and never
-reconciles them: readdress a lamp with another tool and rescan, and the
-gateway keeps a stale record at the old address and adds a fresh one, with a
-factory name and no zone or schedule memberships, at the new. The REST API
-exposes no serial number and no reliable liveness flag, so nothing can tell
-a stale record from a real device automatically.
+The gateway only learns about the bus when it scans, and it keys its device
+records by line and address without ever reconciling them. Readdress a
+device with a commissioning tool and the gateway is left with stale data: the
+old record stays, and the next scan adds a fresh record at the new address
+with a factory name and no zone or schedule memberships. The REST API exposes
+no serial number and no liveness flag, so a stale record cannot be told from
+a live device that is switched off.
 
-`dali-iot site check` first asks the gateway to reload its device list from
-the bus (a "current device list" scan, which changes no address; skip it
-with `--no-scan`, or run it alone with `dali-iot gateway rescan`), then
-compares the file's device inventory with the gateway's and reports:
+Treat any readdressing done elsewhere as a reconfiguration of the gateway:
 
-- `lost`: the file has a device at an address the gateway has nothing at.
-- `new`: the gateway has a record the file does not mention. When file
-  devices share its type and groups, they are listed as candidates, since
-  both live in the device and survive a readdress.
-- `moved`: a `lost` and a `new` with the same type and groups, paired.
-- `type`: the file and the gateway disagree about what is at an address.
-- `stale`: a line holds more records than the scan found devices, so some
-  records belong to nothing. A stale record is indistinguishable from a live
-  device that is switched off, so the count is the only evidence; records
-  sharing a type and groups are listed as the likely pairs. Switching one on
-  and reading which record reports `lampOn` settles it.
+1. `dali-iot gateway rescan` so the gateway sees the bus as it is now.
+2. Edit the file: change `address:` on the moved device and any
+   `devices: [...]` references to it, and remove nothing else.
+3. `dali-iot plan` lists the old address as a device not in the file;
+   `dali-iot apply --prune` deletes that record and repoints zones and
+   schedules, which are resolved from addresses when the change runs.
+   Deleting a record never touches the device itself.
 
-Each finding comes with the edit to make. The usual readdress workflow is:
-change the address, run `site check`, change `address:` and any
-`devices: [...]` references in the file, then `apply --prune` to drop the
-stale record. Zone and schedule targets follow, because they are resolved
-from addresses when the change runs. `check` exits 1 when anything differs,
-so it can gate a script.
+Names and memberships kept in the gateway for the old record are not
+carried over by the gateway; the file is what restores them.
 
 The site file covers what the REST API covers: control gear, meaning lamps
 and relays. Control devices such as push-button couplers are not visible to
