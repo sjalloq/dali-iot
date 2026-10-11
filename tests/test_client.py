@@ -1,3 +1,5 @@
+import pytest
+
 from dali_iot.client import off_features, on_features, schedule_action
 
 
@@ -30,3 +32,36 @@ def test_schedule_action_nests_features():
         "type": "features",
         "data": {"features": {"switchable": True}},
     }
+
+
+def test_rescan_starts_a_no_addressing_scan_and_waits(client, fake, monkeypatch):
+    monkeypatch.setattr("dali_iot.client.time.sleep", lambda s: None)
+    states = iter(
+        [
+            {"id": "", "status": "not started"},  # pre-check
+            {"id": "old", "status": "done", "progress": 100.0},  # stale result from an earlier scan
+            {"id": "new", "status": "in progress", "progress": 40.0},
+            {"id": "new", "status": "done", "progress": 100.0, "found": 12},
+        ]
+    )
+    fake.answers[("POST", "/dali/scan")] = {"id": "new", "status": "not started"}
+    orig = fake.request
+
+    def request(method, url, json=None, params=None, timeout=None):
+        if method == "GET" and url.endswith("/dali/scan"):
+            fake.answers[("GET", "/dali/scan")] = next(states)
+        return orig(method, url, json, params, timeout)
+
+    fake.request = request
+    seen = []
+    st = client.rescan(seen.append)
+    assert st["found"] == 12
+    assert [s["id"] for s in seen] == ["old", "new", "new"]
+    post = [(m, p, j) for m, p, j, _ in fake.calls if m == "POST"]
+    assert post == [("POST", "/dali/scan", {"newInstallation": False, "noAddressing": True})]
+
+
+def test_rescan_refuses_while_a_scan_runs(client, fake):
+    fake.answers[("GET", "/dali/scan")] = {"id": "x", "status": "in progress", "progress": 10.0}
+    with pytest.raises(RuntimeError, match="already running"):
+        client.rescan()

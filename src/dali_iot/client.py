@@ -9,6 +9,7 @@ Every exchange can be traced to a callback for ``--trace``.
 from __future__ import annotations
 
 import dataclasses
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -63,6 +64,30 @@ class Client:
     # --- gateway ---
     def info(self) -> dict:
         return self.get("/info")
+
+    def scan_status(self) -> dict:
+        return self.get("/dali/scan")
+
+    def rescan(self, progress: Callable[[dict], None] | None = None, poll: float = 1.0) -> dict:
+        """Reload the gateway's device list from the bus without changing any address.
+
+        Starts a "current device list" scan (``noAddressing``), the only scan type
+        that leaves addresses alone, and waits for it. ``progress`` is called with
+        each status poll. Returns the final status. Refuses to start while another
+        scan is running.
+        """
+        before = self.scan_status()
+        if before.get("status") in ("in progress", "running", "started", "addressing", "scanning"):
+            raise RuntimeError(f"a scan is already running ({before.get('progress')}%)")
+        started = self.post("/dali/scan", json={"newInstallation": False, "noAddressing": True})
+        scan_id = started.get("id")
+        while True:
+            time.sleep(poll)
+            st = self.scan_status()
+            if progress:
+                progress(st)
+            if st.get("id") == scan_id and st.get("status") in ("done", "cancelled", "error", "failed"):
+                return st
 
     # --- devices, groups, zones ---
     def devices(self) -> list[dict]:

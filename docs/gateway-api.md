@@ -61,3 +61,25 @@ Gateway device id = DALI short address + 1.
 
 The gateway also serves a WebSocket on port 80 that carries raw DALI frames
 and a bus monitor stream. dali-iot does not use it.
+
+## Scans and device records
+
+`POST /dali/scan` takes `newInstallation` and `noAddressing`:
+
+| newInstallation | noAddressing | effect |
+|---|---|---|
+| true | false | deletes every device record, readdresses the whole bus |
+| false | false | adds unaddressed devices with new addresses |
+| false | true | reloads the device list; nothing is readdressed |
+
+Only the last is safe to run casually, and it is what `dali-iot gateway
+rescan` and `site check` use. Poll `GET /dali/scan` until `status` is `done`;
+the reply carries the scan `id`, so a stale `done` from an earlier scan can
+be told apart from the new one.
+
+Device records are keyed by line and address. After a device is readdressed
+elsewhere and the bus rescanned, the gateway keeps the old record (its
+`available` flag stays `true`) and creates a new one with a new id, a
+factory name and no zone or schedule memberships. Records expose no serial
+number, GTIN or firmware version. `DELETE /device/{id}` removes only the
+record, never anything in the device.

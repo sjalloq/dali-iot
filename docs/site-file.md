@@ -7,7 +7,7 @@ because the file describes one installation. `--site PATH` points elsewhere.
 
 ```
 dali-iot site init     # starting file from what the gateway holds now
-dali-iot site check    # do the file's devices still match the gateway's? (read-only)
+dali-iot site check    # rescan the bus; do the file's devices still match?
 dali-iot plan          # what apply would change (read-only)
 dali-iot apply         # make the gateway match the file
 ```
@@ -136,8 +136,10 @@ factory name and no zone or schedule memberships, at the new. The REST API
 exposes no serial number and no reliable liveness flag, so nothing can tell
 a stale record from a real device automatically.
 
-`dali-iot site check` compares the file's device inventory with the
-gateway's and reports:
+`dali-iot site check` first asks the gateway to reload its device list from
+the bus (a "current device list" scan, which changes no address; skip it
+with `--no-scan`, or run it alone with `dali-iot gateway rescan`), then
+compares the file's device inventory with the gateway's and reports:
 
 - `lost`: the file has a device at an address the gateway has nothing at.
 - `new`: the gateway has a record the file does not mention. When file
@@ -147,7 +149,7 @@ gateway's and reports:
 - `type`: the file and the gateway disagree about what is at an address.
 
 Each finding comes with the edit to make. The usual readdress workflow is:
-change the address, rescan, run `site check`, change `address:` and any
+change the address, run `site check`, change `address:` and any
 `devices: [...]` references in the file, then `apply --prune` to drop the
 stale record. Zone and schedule targets follow, because they are resolved
 from addresses when the change runs. `check` exits 1 when anything differs,

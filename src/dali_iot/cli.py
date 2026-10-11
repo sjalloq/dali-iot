@@ -120,6 +120,30 @@ def gateway_info(ctx: click.Context) -> None:
     click.echo(json.dumps(_client(ctx).info(), indent=2))
 
 
+def _rescan(c: Client) -> None:
+    """Run a no-addressing scan with a progress line on stderr."""
+    last = [-1.0]
+
+    def progress(st: dict) -> None:
+        pct = st.get("progress") or 0.0
+        if pct != last[0]:
+            click.echo(f"\rscanning the bus... {pct:3.0f}%", nl=False, err=True)
+            last[0] = pct
+
+    try:
+        st = c.rescan(progress)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from None
+    click.echo(f"\rscanning the bus... {st.get('status')}, {st.get('found')} device(s)", err=True)
+
+
+@gateway.command("rescan")
+@click.pass_context
+def gateway_rescan(ctx: click.Context) -> None:
+    """Reload the gateway's device list from the bus. Changes no address."""
+    _rescan(_client(ctx))
+
+
 # --- dump ---
 
 
@@ -167,13 +191,19 @@ def site_init(ctx: click.Context, path: Path, force: bool) -> None:
 
 @site.command("check")
 @click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
+@click.option("--no-scan", is_flag=True, help="Trust the gateway's current list; do not rescan the bus")
 @click.pass_context
-def site_check(ctx: click.Context, path: Path) -> None:
-    """Does the file still match the devices on the gateway? Lost, new and moved devices.
+def site_check(ctx: click.Context, path: Path, no_scan: bool) -> None:
+    """Does the file still match the devices on the bus? Lost, new and moved devices.
 
-    Read-only. Exits 1 when something differs. Names, zones and schedules are plan's job.
+    Rescans the bus first (no address is changed) so the gateway's list is current.
+    Exits 1 when something differs. Names, zones and schedules are plan's job.
     """
-    findings = checker.compare(_load_site(path), _client(ctx).devices())
+    site = _load_site(path)
+    c = _client(ctx)
+    if not no_scan:
+        _rescan(c)
+    findings = checker.compare(site, c.devices())
     for f in findings:
         click.echo(str(f))
     if findings:
