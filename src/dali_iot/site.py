@@ -82,6 +82,9 @@ class DeviceSpec(BaseModel):
     address: int = Field(ge=0, le=63)
     type: str | None = None
     groups: list[int] | None = None  # None = leave the gateway's groups alone
+    serial: int | None = None  # from memory bank 0 (dali-iot site init --identify); informational
+    unit: int | None = None  # index within a multi-channel device sharing one serial
+    product: str | None = None  # Lunatone article number with suffix; informational
 
 
 class LineSpec(BaseModel):
@@ -162,23 +165,29 @@ def load(path: Path = DEFAULT_PATH) -> Site:
         return Site.model_validate(yaml.safe_load(f) or {})
 
 
-def from_gateway(devices: list[dict], zones: list[dict], schedules: list[dict] = ()) -> str:
+def from_gateway(
+    devices: list[dict],
+    zones: list[dict],
+    schedules: list[dict] = (),
+    identities: dict[tuple[int, int], dict[str, Any]] | None = None,
+) -> str:
     """A starting site file from what the gateway holds now, as YAML text.
 
     Names are kept exactly as the gateway has them, so a fresh file plans no changes.
+    ``identities`` maps (line, address) to ``serial``/``product`` read over the bus.
     """
     names = {d["id"]: (d.get("name") or f"device {d['id']}") for d in devices}
     refs = {d["id"]: format_ref(int(d.get("line", 0)), int(d["address"])) for d in devices if "address" in d}
     lines: dict[int, dict[str, Any]] = {}
     for d in sorted(devices, key=lambda d: (d.get("line", 0), d.get("address", 0))):
-        lines.setdefault(int(d.get("line", 0)), {"devices": []})["devices"].append(
-            {
-                "name": names[d["id"]],
-                "address": d.get("address"),
-                "type": type_name(d.get("daliTypes") or []),
-                "groups": sorted(d.get("groups") or []),
-            }
-        )
+        entry = {
+            "name": names[d["id"]],
+            "address": d.get("address"),
+            "type": type_name(d.get("daliTypes") or []),
+            "groups": sorted(d.get("groups") or []),
+        }
+        entry.update((identities or {}).get((int(d.get("line", 0)), int(d.get("address", -1))), {}))
+        lines.setdefault(int(d.get("line", 0)), {"devices": []})["devices"].append(entry)
     out: dict[str, Any] = {"lines": lines, "zones": []}
     zone_names = {z["id"]: (z.get("name") or f"zone {z['id']}") for z in zones}
     for z in zones:

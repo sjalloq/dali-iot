@@ -87,3 +87,12 @@ def test_from_gateway_round_trips():
     assert s.zones[0].name == "broadcast" and s.zones[0].broadcast == [0]
     assert s.zones[2].devices == [8]
     assert not any(" # " in line for line in text.splitlines()[1:])  # no comments: types are keys
+
+
+def test_from_gateway_adds_identities():
+    text = from_gateway(GW_DEVICES, GW_ZONES, identities={(0, 7): {"serial": 42, "product": "86458619-25"}})
+    data = yaml.safe_load(text)
+    assert data["lines"][0]["devices"][0]["serial"] == 42
+    assert data["lines"][0]["devices"][0]["product"] == "86458619-25"
+    assert "serial" not in data["lines"][0]["devices"][1]
+    Site.model_validate(data)

@@ -31,6 +31,7 @@ This file is how to work here.
 - `src/dali_iot/config.py` — gateway URL: `--url` > `~/.config/dali-iot/config.toml`
 - `src/dali_iot/site.py` — site file model: devices by line + short address with checked `type`, zones, schedules; device references are addresses (`parse_ref`), never names or gateway ids; `site init` generator
 - `src/dali_iot/schedule.py` — schedule intent (`at`, targets, switch/level/scene/features, days, months) <-> gateway scheduler body; `canonical()` for diffing
+- `src/dali_iot/bus.py` — WebSocket queries: memory bank reads -> `Identity` (serial, unit, article); read-only, never programs a device
 - `src/dali_iot/plan.py` — diff site vs gateway (devices, zones, schedules) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
 - `src/dali_iot/cli.py` — `dali-iot` click CLI
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
@@ -83,4 +84,5 @@ dali-iot [--trace] dump | all-off | on|off --device N|--zone N|--group N | recal
 - `api_models.py` is generated; knowledge the spec lacks lives in `client.py`
   helpers and, later, the intent compiler, never in the generated file.
 - Readdressing with another tool leaves the gateway with stale records; the tool
-  does not try to detect that. The recovery is documented in `docs/site-file.md`.
+  does not try to detect that over REST. `bus.py` is the only module that talks
+  to the WebSocket and it sends queries and DTR writes only. The recovery is documented in `docs/site-file.md`.

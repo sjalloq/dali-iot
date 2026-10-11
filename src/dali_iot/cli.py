@@ -9,6 +9,7 @@ from typing import Any
 
 import click
 
+from . import bus as dalibus
 from . import config, discover
 from . import plan as planner
 from . import site as sitefile
@@ -36,11 +37,15 @@ def main(ctx: click.Context, url: str | None, trace: bool, timeout: float) -> No
     ctx.obj["timeout"] = timeout
 
 
-def _client(ctx: click.Context) -> Client:
+def _url(ctx: click.Context) -> tuple[str, str]:
     try:
-        url, _ = config.resolve_url(ctx.obj["url"])
+        return config.resolve_url(ctx.obj["url"])
     except config.NoGatewayError as e:
         raise click.ClickException(str(e)) from None
+
+
+def _client(ctx: click.Context) -> Client:
+    url, _ = _url(ctx)
     return Client(url, timeout=ctx.obj["timeout"], trace=_trace if ctx.obj["trace"] else None)
 
 
@@ -178,15 +183,57 @@ def site() -> None:
 @site.command("init")
 @click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
 @click.option("--force", is_flag=True, help="Overwrite an existing file")
+@click.option("--identify", is_flag=True, help="Also read each device's serial and product over the bus")
 @click.pass_context
-def site_init(ctx: click.Context, path: Path, force: bool) -> None:
+def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> None:
     """Write a starting site file from what the gateway holds now."""
     if path.exists() and not force:
         raise click.ClickException(f"{path} exists; pass --force to overwrite")
     c = _client(ctx)
+    devices = c.devices()
+    identities = None
+    if identify:
+        identities = dalibus.identities_by_address(_identify(ctx, devices))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(sitefile.from_gateway(c.devices(), c.zones(), c.automations("schedule")))
+    path.write_text(sitefile.from_gateway(devices, c.zones(), c.automations("schedule"), identities))
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
+
+
+def _identify(ctx: click.Context, devices: list[dict]) -> list[dalibus.Identity]:
+    """Read bank 0 of every gateway device over the WebSocket, with progress on stderr."""
+    addrs = sorted((int(d.get("line", 0)), int(d["address"])) for d in devices if "address" in d)
+    url, _ = _url(ctx)
+    try:
+        sock = dalibus.connect(url, timeout=ctx.obj["timeout"])
+    except OSError as e:
+        raise click.ClickException(f"cannot open {dalibus.ws_url(url)}: {e}") from None
+    out: list[dalibus.Identity] = []
+    with dalibus.Bus(sock, timeout=ctx.obj["timeout"]) as bus:
+        for n, ident in enumerate(bus.identify_all(addrs), 1):
+            click.echo(f"\ridentifying... {n}/{len(addrs)}", nl=False, err=True)
+            out.append(ident)
+    click.echo("", err=True)
+    return out
+
+
+@main.group()
+def bus() -> None:
+    """Raw DALI queries over the gateway's WebSocket (read-only)."""
+
+
+@bus.command("identify")
+@click.pass_context
+def bus_identify(ctx: click.Context) -> None:
+    """Serial and product of every device, read from memory bank 0."""
+    for i in _identify(ctx, _client(ctx).devices()):
+        if not i.bank0:
+            click.echo(f"line {i.line} A{i.address:<3} no answer")
+            continue
+        unit = f" unit {i.unit}/{i.units}" if i.unit is not None else ""
+        click.echo(
+            f"line {i.line} A{i.address:<3} serial {i.serial!s:<12}{unit:<10} fw {i.firmware!s:<6} "
+            f"{i.article or ''}{'' if i.dali2 else '  (pre-DALI-2 bank layout)'}"
+        )
 
 
 def _load_site(path: Path) -> sitefile.Site:

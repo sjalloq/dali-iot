@@ -40,6 +40,13 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
+`dali-iot site init --identify` also reads each device's memory bank 0 over
+the gateway's WebSocket and records `serial`, `product` (the Lunatone article
+number with its suffix) and, for multi-channel devices that share one serial,
+`unit`. These are informational: `plan` ignores them, but they say *which*
+device an address was, which nothing in the REST API does.
+`dali-iot bus identify` prints the same without writing a file.
+
 Zones and schedules refer to devices by short address, never by name: an
 integer is an address on line 0, and `"line/address"` reaches other lines.
 Names are labels you can change freely without breaking anything. Every
@@ -134,7 +141,8 @@ device with a commissioning tool and the gateway is left with stale data: the
 old record stays, and the next scan adds a fresh record at the new address
 with a factory name and no zone or schedule memberships. The REST API exposes
 no serial number and no liveness flag, so a stale record cannot be told from
-a live device that is switched off.
+a live device that is switched off. Serials recorded with `--identify`, or a
+fresh `dali-iot bus identify`, show which address a device went to.
 
 Treat any readdressing done elsewhere as a reconfiguration of the gateway:
 

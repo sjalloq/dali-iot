@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2",
     "pyyaml>=6",
     "requests>=2.31",
+    "websockets>=17.2",
 ]
 
 [project.scripts]

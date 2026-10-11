@@ -59,27 +59,27 @@ Gateway device id = DALI short address + 1.
 
 ## WebSocket
 
-The gateway also serves a WebSocket on port 80 that carries raw DALI frames
-and a bus monitor stream. dali-iot does not use it.
+Port 80 also serves a WebSocket at `ws://<gateway>/` that relays raw DALI
+frames. No authentication is needed on the LAN. Messages are JSON:
 
-## Scans and device records
+```json
+{"type": "daliFrame", "data": {"line": 0, "numberOfBits": 16, "daliData": [1, 197],
+ "mode": {"sendTwice": false, "waitForAnswer": true, "priority": 4}}}
+```
 
-`POST /dali/scan` takes `newInstallation` and `noAddressing`:
+The gateway echoes `{"type": "daliFrame", "data": {"line": 0, "result": 0}}`,
+then, when `waitForAnswer` was set, sends `daliAnswer` with `data.result` 8
+and `data.daliData` the answer byte as an integer, or `result` 0 for no
+answer. `daliMonitor` events carry every frame seen on the bus. One query
+round trip takes about 75 ms.
 
-| newInstallation | noAddressing | effect |
-|---|---|---|
-| true | false | deletes every device record, readdresses the whole bus |
-| false | false | adds unaddressed devices with new addresses |
-| false | true | reloads the device list; nothing is readdressed |
-
-Only the last is safe to run casually, and it is what `dali-iot gateway
-rescan` runs. Poll `GET /dali/scan` until `status` is `done`;
-the reply carries the scan `id`, so a stale `done` from an earlier scan can
-be told apart from the new one.
-
-Device records are keyed by line and address. After a device is readdressed
-elsewhere and the bus rescanned, the gateway keeps the old record (its
-`available` flag stays `true`) and creates a new one with a new id, a
-factory name and no zone or schedule memberships. Records expose no serial
-number, GTIN or firmware version. `DELETE /device/{id}` removes only the
-record, never anything in the device.
+`dali_iot.bus` uses this for memory bank reads only (SET DTR1 `C3 bb`, SET
+DTR0 `A3 oo`, then READ MEMORY LOCATION `C5` per byte with DTR0
+auto-incrementing, also past locations that give no answer). Bank 0 layout:
+offset 0 is the last accessible offset, 3–8 GTIN, 9–10 firmware, 0x0B–0x12
+the identification number on IEC 62386-102 ed. 2 gear (0x0B–0x0E on ed. 1
+gear, whose bank ends at 0x11), 0x19 the number of logical units in the
+device and 0x1A this unit's index. Lunatone devices add a block tagged
+`Lunatone`, in bank 0 at 0x84 on DALI-2 gear and in bank 2 at offset 3 on
+older gear, holding a big-endian u32 article number and an ASCII suffix,
+e.g. `86458619-300U-HS`. GTIN was zero on every Lunatone device seen.
