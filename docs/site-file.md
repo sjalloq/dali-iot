@@ -6,7 +6,7 @@ site file, `site/site.yaml` by default. The `site/` directory is git-ignored
 because the file describes one installation. `--site PATH` points elsewhere.
 
 ```
-dali-iot site init     # starting file from what the gateway holds now (--identify adds serials)
+dali-iot site init     # starting file: gateway's devices, zones, automations + serials from the bus
 dali-iot site check    # does the file still describe the bus? asks every device (read-only)
 dali-iot plan          # what apply would change (read-only)
 dali-iot apply         # make the gateway match the file
@@ -41,15 +41,14 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
-`dali-iot site init --identify` also reads each device's memory bank 0 over
-the gateway's WebSocket and records `serial`, `product` (the Lunatone article
+`dali-iot site init` also reads each device's memory bank 0 over the
+gateway's WebSocket and records `serial`, `product` (the Lunatone article
 number with its suffix) and, for multi-channel devices that share one serial,
 `unit`. These are informational: `plan` ignores them, but they say *which*
-device an address was, which nothing in the REST API does.
-`dali-iot bus identify` prints the same without writing a file. A re-init
-without `--identify` drops any serials the old file had rather than copying
-them, because a re-init usually follows an address change and a serial is
-only true of the address it was read at.
+device an address was, which nothing in the REST API does. They are always
+read from the bus, never copied from an older file, because a serial is only
+true of the address it was read at. `dali-iot bus identify` prints the same
+without writing a file.
 
 To find out which light an address is, `dali-iot device identify 7` blinks
 it off and on twice and restores it.
@@ -213,7 +212,7 @@ and compares with the file and with the gateway's records:
 - `replaced`: the address answers, but with a different serial.
 - `new`: a device on the bus that the file does not know.
 - `unknown`: the file entry has no serial to compare, so only presence was
-  checked; `site init --identify` records serials.
+  checked; `site init` records serials.
 - `stale`: a gateway record at an address where nothing answers;
   `apply --prune` deletes it.
 - `unscanned`: a device on the bus the gateway has no record of;

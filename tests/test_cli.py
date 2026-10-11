@@ -5,6 +5,7 @@ from click.testing import CliRunner
 
 from dali_iot import cli
 from dali_iot.client import Client, off_features, on_features
+from tests.test_bus import OLD_BANK0, OLD_BANK2, FakeSocket
 from tests.test_plan import _gw
 
 STEP = {
@@ -21,6 +22,9 @@ def run(fake, monkeypatch):
         "sequences": [{"id": 4, "name": "evening", "steps": [STEP]}]
     }
     monkeypatch.setattr(cli, "_url", lambda ctx: ("http://gw", "test"))
+    monkeypatch.setattr(
+        cli.dalibus, "connect", lambda url, timeout: FakeSocket({(7, 0): OLD_BANK0, (7, 2): OLD_BANK2})
+    )
     monkeypatch.setattr(cli, "_client", lambda ctx: Client("http://gw", session=fake))
 
     def _run(*args):
@@ -104,10 +108,10 @@ def test_site_init_plan_and_apply_round_trip(run, tmp_path):
     assert _writes(run.fake) == []  # plan is read-only
     assert run("apply", "--yes", "--site", str(path)).exit_code == 0
     assert _writes(run.fake) == [("PUT", "/device/8", {"name": "outside"})]
-    # a plain re-init drops serials (addresses may have changed) and says so
+    # a re-init reads serials from the bus again; the old file's values are not reused
     r = run("site", "init", "--force", "--path", str(path))
-    assert r.exit_code == 0 and "serials" in r.output and "--identify" in r.output
-    assert "serial" not in path.read_text()
+    assert r.exit_code == 0
+    assert "serial: 4242" not in path.read_text() and "serial: 104887" in path.read_text()
 
 
 def test_help_short_option(run):

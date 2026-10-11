@@ -51,7 +51,7 @@ def compare(site: Site, on_bus: list[Identity], gw_devices: list[dict] | None = 
                     Finding(
                         "lost",
                         f"{spec.name!r} {_ref(line, addr)}: nothing answers on the bus",
-                        "remove it from the file if it is gone; a serial (site init --identify) would show a move",
+                        "remove it from the file if it is gone; a serial (site init) would show a move",
                     )
                 )
             else:
@@ -60,7 +60,7 @@ def compare(site: Site, on_bus: list[Identity], gw_devices: list[dict] | None = 
                     Finding(
                         "unknown",
                         f"{spec.name!r} {_ref(line, addr)}: answers, but the file has no serial to compare",
-                        "record serials with: dali-iot site init --identify (then copy them into your file)",
+                        "record serials with: dali-iot site init (then copy them into your file)",
                     )
                 )
             continue
@@ -106,7 +106,7 @@ def compare(site: Site, on_bus: list[Identity], gw_devices: list[dict] | None = 
                 "new",
                 f"{_ref(line, addr)}: serial {ident.serial}{_unit(ident.unit)}"
                 f"{', ' + ident.article if ident.article else ''}, not in the file",
-                "add it under lines (dali-iot site init --identify --path OTHER writes a full file to copy from)",
+                "add it under lines (dali-iot site init --path OTHER writes a full file to copy from)",
             )
         )
 

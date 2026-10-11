@@ -59,7 +59,7 @@ class DeviceSpec(BaseModel):
     address: int = Field(ge=0, le=63)
     type: str | None = None
     groups: list[int] | None = None  # None = leave the gateway's groups alone
-    serial: int | None = None  # from memory bank 0 (dali-iot site init --identify); informational
+    serial: int | None = None  # from memory bank 0 (read over the bus by site init); informational
     unit: int | None = None  # index within a multi-channel device sharing one serial
     product: str | None = None  # Lunatone article number with suffix; informational
 

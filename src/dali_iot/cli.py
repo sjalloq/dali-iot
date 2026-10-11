@@ -184,21 +184,19 @@ def site() -> None:
 @site.command("init")
 @click.option("--path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True)
 @click.option("--force", is_flag=True, help="Overwrite an existing file")
-@click.option("--identify", is_flag=True, help="Also read each device's serial and product over the bus")
 @click.pass_context
-def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> None:
-    """Write a starting site file from what the gateway holds now."""
+def site_init(ctx: click.Context, path: Path, force: bool) -> None:
+    """Write a starting site file from the gateway and the bus.
+
+    Devices, zones and automations come from the gateway; each device's serial and
+    product are read from the device itself over the bus, so they are true for the
+    addresses as they are now.
+    """
     if path.exists() and not force:
         raise click.ClickException(f"{path} exists; pass --force to overwrite")
     c = _client(ctx)
     devices = c.devices()
-    identities = dalibus.identities_by_address(_identify(ctx, devices)) if identify else None
-    if not identify and _has_identities(path):
-        click.echo(
-            "note: the old file had serials; they are not carried over because addresses may have "
-            "changed. Pass --identify to read them from the bus again.",
-            err=True,
-        )
+    identities = dalibus.identities_by_address(_identify(ctx, devices))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         sitefile.from_gateway(
@@ -211,18 +209,6 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
         )
     )
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
-
-
-def _has_identities(path: Path) -> bool:
-    """Does the file being replaced carry serials? Never copied: they are facts about an
-    address at the time they were read, and a re-init usually follows an address change."""
-    if not path.exists():
-        return False
-    try:
-        site = sitefile.load(path)
-    except ValueError:
-        return False
-    return any(d.serial is not None for _, d in site.devices())
 
 
 def _identify(ctx: click.Context, devices: list[dict]) -> list[dalibus.Identity]:

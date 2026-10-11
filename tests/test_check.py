@@ -61,7 +61,7 @@ def test_lost_replaced_and_new():
 def test_entries_without_serial_fall_back_to_presence():
     findings = compare(_site({"name": "x", "address": 0}, {"name": "y", "address": 1}), [_ident(0, 1)])
     assert [(f.kind, f.detail.split(":")[0]) for f in findings] == [("unknown", "'x' A0"), ("lost", "'y' A1")]
-    assert "site init --identify" in findings[0].suggest
+    assert "site init" in findings[0].suggest
 
 
 def test_gateway_records_against_the_bus():
