@@ -16,4 +16,4 @@ dali-iot --trace off --device 8
 dali-iot gateway spec          # download the gateway's OpenAPI spec (then: make models)
 ```
 
-Docs: `make docs` → `docs/build/html/`.
+Docs: https://sjalloq.github.io/dali-iot/ (built with `make docs` → `docs/build/html/`).

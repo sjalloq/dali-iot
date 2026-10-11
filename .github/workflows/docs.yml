@@ -1,7 +1,6 @@
-# Publishes the docs to the LAN docs server on every push to main. The flow
-# itself lives in sjalloq/pve (publish-docs.yml); this file is the same in
-# every repo and needs no editing. The repo's side of the contract:
-# `make docs` writes HTML to docs/build/html/ with warnings as errors.
+# Builds the docs with `make docs` and publishes docs/build/html/ to GitHub
+# Pages on every push to main. Pages must be set to deploy from GitHub
+# Actions (repo settings → Pages → Source).
 name: docs
 
 on:
@@ -14,16 +13,33 @@ on:
       - "uv.lock"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
-    inputs:
-      runner:
-        description: Runner to build and publish on
-        type: choice
-        options: [docs, docs-test]
-        default: docs
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  publish:
-    # Pushes have no inputs, so they always land on the real server.
-    uses: sjalloq/pve/.github/workflows/publish-docs.yml@main
-    with:
-      runner: ${{ inputs.runner || 'docs' }}
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: make docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/html
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

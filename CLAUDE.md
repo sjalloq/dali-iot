@@ -59,10 +59,9 @@ dali-iot [--trace] dump | all-off | on|off --device N|--zone N|--group N | recal
 - Tests and lint pass before finishing.
 - Official docs live in `docs/`. Never in the vault.
 - `make docs` is the publishing contract: HTML into `docs/build/html/`,
-  warnings as errors, installing only what the docs need. The docs server
-  runs exactly that via `.github/workflows/docs.yml`, which is identical in
-  every repo — never edit it; the flow is defined in `pve`. Procedure for
-  publishing a new repo: pve docs, *vms/docs → Adding a repo*.
+  warnings as errors, installing only what the docs need.
+  `.github/workflows/docs.yml` runs exactly that and publishes the result to
+  GitHub Pages on every push to main (public repo, so no private docs server).
 - Never commit a secret, a gateway dump, or the house's device map
   (`dump/` and `*.local.yaml` are ignored).
 - Commit messages short and to the point; no co-auth attribution.
