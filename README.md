@@ -17,6 +17,7 @@ dali-iot broadcast off         # everything off
 dali-iot zone on lounge --level 60
 dali-iot device off 7          # by DALI address; --trace logs the requests
 dali-iot group recall 2 3      # scene 3 on group 2
+dali-iot sequence run evening  # start a stored sequence
 dali-iot gateway spec          # download the gateway's OpenAPI spec (then: make models)
 ```
 

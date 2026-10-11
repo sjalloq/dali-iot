@@ -41,6 +41,7 @@ zones:
 
 Names must be unique across all devices, and across all zones.
 
+`dali-iot site init` keeps the serials an existing file already has.
 `dali-iot site init --identify` also reads each device's memory bank 0 over
 the gateway's WebSocket and records `serial`, `product` (the Lunatone article
 number with its suffix) and, for multi-channel devices that share one serial,
@@ -148,8 +149,12 @@ sequences:
         enabled: false      # a step can be parked without deleting it
 ```
 
-Sequences are stored, not run, by `apply`. Starting one is a gateway action
-(`POST /automations/sequence/{id}/start`), not part of the file.
+Sequences are stored, not run, by `apply`. `dali-iot sequence run NAME`
+starts one and `sequence stop NAME` stops a looping one.
+
+The gateway's two other automation kinds, circadian curves and status
+queries, are not modelled. They are left alone on the gateway and never
+appear in the file.
 
 ### Types
 

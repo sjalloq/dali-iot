@@ -41,7 +41,7 @@ This file is how to work here.
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
   Its header names the spec file, and so the firmware version, it came from
 - `spec/` — git-ignored; `dali-iot gateway spec` downloads `openapi-<firmware>.json` here
-- `tests/` — pytest; `conftest.py` has a fake session, no gateway needed
+- `tests/` — pytest (test_cli.py drives the commands with click's runner over the fake session); `conftest.py` has a fake session, no gateway needed
 - `docs/` — Sphinx (MyST, furo); `docs/site-file.md` the site format (devices, zones, schedules), `docs/gateway-api.md` API gotchas
 - `site/` — git-ignored; the user's own site file lives here
 
@@ -90,3 +90,4 @@ dali-iot [--trace] dump | device on|off|recall|identify ADDR | zone on|off NAME 
 - Readdressing with another tool leaves the gateway with stale records. REST
   cannot detect that; `site check` does it over the bus by serial. `bus.py` is the only module that talks
   to the WebSocket and it sends queries and DTR writes only. The recovery is documented in `docs/site-file.md`.
+- Circadians and status queries are out of scope: never written, never compared.

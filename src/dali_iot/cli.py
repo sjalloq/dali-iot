@@ -192,9 +192,10 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
         raise click.ClickException(f"{path} exists; pass --force to overwrite")
     c = _client(ctx)
     devices = c.devices()
-    identities = None
     if identify:
         identities = dalibus.identities_by_address(_identify(ctx, devices))
+    else:
+        identities = _kept_identities(path)  # keep serials from the file being replaced
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         sitefile.from_gateway(
@@ -207,6 +208,22 @@ def site_init(ctx: click.Context, path: Path, force: bool, identify: bool) -> No
         )
     )
     click.echo(f"wrote {path}; edit the names, then: dali-iot plan")
+
+
+def _kept_identities(path: Path) -> dict[tuple[int, int], dict[str, Any]] | None:
+    """serial/unit/product per (line, address) from an existing site file, so a re-init keeps them."""
+    if not path.exists():
+        return None
+    try:
+        site = sitefile.load(path)
+    except ValueError:
+        return None
+    out: dict[tuple[int, int], dict[str, Any]] = {}
+    for line, d in site.devices():
+        kept = {k: getattr(d, k) for k in ("serial", "unit", "product") if getattr(d, k) is not None}
+        if kept:
+            out[(line, d.address)] = kept
+    return out or None
 
 
 def _identify(ctx: click.Context, devices: list[dict]) -> list[dalibus.Identity]:
@@ -443,6 +460,39 @@ def device_identify(ctx: click.Context, address: str, times: int, pause: float) 
     )
     c.blink_device(d["id"], times=times, pause=pause)
     click.echo("restored", err=True)
+
+
+@main.group()
+def sequence() -> None:
+    """Stored sequences, by name (defined in the site file; see apply)."""
+
+
+def _sequence_named(c: Client, name: str) -> dict:
+    seqs = c.automations("sequence")
+    for sq in seqs:
+        if sq.get("name") == name:
+            return sq
+    raise click.ClickException(
+        f"no sequence named {name!r} (have: {', '.join(str(x.get('name')) for x in seqs)})"
+    )
+
+
+@sequence.command("run")
+@click.argument("name")
+@click.pass_context
+def sequence_run(ctx: click.Context, name: str) -> None:
+    """Start a sequence on the gateway."""
+    c = _client(ctx)
+    c.start_automation("sequence", _sequence_named(c, name)["id"])
+
+
+@sequence.command("stop")
+@click.argument("name")
+@click.pass_context
+def sequence_stop(ctx: click.Context, name: str) -> None:
+    """Stop a running sequence."""
+    c = _client(ctx)
+    c.stop_automation("sequence", _sequence_named(c, name)["id"])
 
 
 @main.group()
