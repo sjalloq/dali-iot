@@ -51,3 +51,19 @@ def test_untyped_entries_never_pair_as_moves():
     gw = [d for d in GW if d["address"] != 5]
     kinds = sorted(f.kind for f in compare(_site(A0, {"name": "e", "address": 5}, A7), gw))
     assert kinds == ["lost", "new"]
+
+
+SCAN = {"status": "done", "found": 3, "lines": [{"line": 0, "found": 3}]}
+
+
+def test_more_records_than_found_is_stale_with_pairs():
+    (f,) = compare(_site(A0, A5, A7, A31), GW, SCAN)
+    assert f.kind == "stale"
+    assert "holds 4 records but the bus answered for 3" in f.detail
+    assert "A5, A31" in f.detail
+    assert "1 record(s)" in f.suggest
+
+
+def test_counts_that_agree_are_quiet():
+    assert compare(_site(A0, A5, A7, A31), GW, {"lines": [{"line": 0, "found": 4}]}) == []
+    assert compare(_site(A0, A5, A7, A31), GW, {"lines": []}) == []

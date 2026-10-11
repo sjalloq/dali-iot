@@ -28,7 +28,8 @@ def _fingerprint(dtype: str, groups: list[int] | None) -> tuple[str, tuple[int, 
     return dtype, tuple(sorted(groups)) if groups is not None else None
 
 
-def compare(site: Site, gw_devices: list[dict]) -> list[Finding]:
+def compare(site: Site, gw_devices: list[dict], scan: dict | None = None) -> list[Finding]:
+    """``scan`` is a finished ``GET /dali/scan`` result; with it, stale records can be counted."""
     by_addr = {(int(d.get("line", 0)), int(d["address"])): d for d in gw_devices if "address" in d}
     lost: list[tuple[int, DeviceSpec]] = []
     findings: list[Finding] = []
@@ -108,4 +109,41 @@ def compare(site: Site, gw_devices: list[dict]) -> list[Finding]:
                 "or apply --prune to delete the gateway record",
             )
         )
+    if scan:
+        findings += _stale(site, gw_devices, scan)
     return findings
+
+
+def _stale(site: Site, gw_devices: list[dict], scan: dict) -> list[Finding]:
+    """More records on a line than devices the bus answered for: some records are stale.
+
+    The gateway never drops a record, and a stale one looks exactly like a live
+    one that is switched off, so only the count gives it away. Records sharing
+    a type and groups with another are the likely pairs.
+    """
+    out: list[Finding] = []
+    for ln in scan.get("lines") or []:
+        line = int(ln.get("line", 0))
+        recs = [d for d in gw_devices if int(d.get("line", 0)) == line and "address" in d]
+        found = ln.get("found")
+        if found is None or len(recs) <= found:
+            continue
+        fps: dict[tuple, list[int]] = {}
+        for d in recs:
+            fps.setdefault(
+                _fingerprint(type_name(d.get("daliTypes") or []), sorted(d.get("groups") or [])), []
+            ).append(int(d["address"]))
+        pairs = [sorted(a) for a in fps.values() if len(a) > 1]
+        detail = f"line {line}: gateway holds {len(recs)} records but the bus answered for {found}"
+        if pairs:
+            detail += "; same type and groups: " + "; ".join("A" + ", A".join(map(str, p)) for p in pairs)
+        out.append(
+            Finding(
+                "stale",
+                detail,
+                f"{len(recs) - found} record(s) belong to no device. If you readdressed one, drop its old "
+                "address from the file and run apply --prune. To tell a pair apart, switch one on "
+                "(dali-iot on --device ID) and see which record reports lampOn.",
+            )
+        )
+    return out

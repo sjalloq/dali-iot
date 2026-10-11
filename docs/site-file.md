@@ -147,6 +147,11 @@ compares the file's device inventory with the gateway's and reports:
   both live in the device and survive a readdress.
 - `moved`: a `lost` and a `new` with the same type and groups, paired.
 - `type`: the file and the gateway disagree about what is at an address.
+- `stale`: a line holds more records than the scan found devices, so some
+  records belong to nothing. A stale record is indistinguishable from a live
+  device that is switched off, so the count is the only evidence; records
+  sharing a type and groups are listed as the likely pairs. Switching one on
+  and reading which record reports `lampOn` settles it.
 
 Each finding comes with the edit to make. The usual readdress workflow is:
 change the address, run `site check`, change `address:` and any

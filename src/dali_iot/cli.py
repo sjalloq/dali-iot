@@ -120,8 +120,8 @@ def gateway_info(ctx: click.Context) -> None:
     click.echo(json.dumps(_client(ctx).info(), indent=2))
 
 
-def _rescan(c: Client) -> None:
-    """Run a no-addressing scan with a progress line on stderr."""
+def _rescan(c: Client) -> dict:
+    """Run a no-addressing scan with a progress line on stderr; returns the result."""
     last = [-1.0]
 
     def progress(st: dict) -> None:
@@ -135,6 +135,7 @@ def _rescan(c: Client) -> None:
     except RuntimeError as e:
         raise click.ClickException(str(e)) from None
     click.echo(f"\rscanning the bus... {st.get('status')}, {st.get('found')} device(s)", err=True)
+    return st
 
 
 @gateway.command("rescan")
@@ -201,9 +202,8 @@ def site_check(ctx: click.Context, path: Path, no_scan: bool) -> None:
     """
     site = _load_site(path)
     c = _client(ctx)
-    if not no_scan:
-        _rescan(c)
-    findings = checker.compare(site, c.devices())
+    scan = None if no_scan else _rescan(c)
+    findings = checker.compare(site, c.devices(), scan)
     for f in findings:
         click.echo(str(f))
     if findings:
