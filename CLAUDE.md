@@ -18,7 +18,7 @@ This file is how to work here.
   Then a small web UI (phone-usable, runs on Proxmox) over the same intent model.
 - **Non-goals:** the DALI bus plane (raw frames, bus monitor, control device
   programming). Mirroring every REST endpoint as a command.
-- **Constraints:** Python ≥3.13, uv, pydantic v2, click, requests. One gateway
+- **Constraints:** Python ≥3.13, uv, pydantic v2, click, requests; FastAPI + Vue/PrimeVue for the web UI (Node only at build time). One gateway
   (firmware 1.12.1 at time of writing; HA integration needs ≥1.14.1).
 - **Done when:** the house's automations live in YAML in git, `apply` reproduces
   them on a reset gateway, and the web UI can switch zones and edit intents.
@@ -37,7 +37,11 @@ This file is how to work here.
 - `src/dali_iot/bus.py` — WebSocket queries: memory bank reads -> `Identity` (serial, unit, article); read-only, never programs a device
 - `src/dali_iot/check.py` — `site check`: bus sweep + serials vs the file and vs gateway records (moved/lost/replaced/new/stale/unscanned)
 - `src/dali_iot/plan.py` — diff site vs gateway (devices, zones; schedules/triggers/sequences via one `_sync` by name) into `Change`s (incl. `error` for type/address mismatch); `plan` reads only, `apply` runs them
-- `src/dali_iot/cli.py` — `dali-iot` click CLI
+- `src/dali_iot/lookup.py` — gateway records by address / zone name / sequence name (`NotFound`); shared by CLI and web
+- `src/dali_iot/cli.py` — `dali-iot` click CLI, including `serve`
+- `src/dali_iot/web/app.py` — FastAPI JSON API (`create_app`) over the site file + gateway, serves the built SPA from `web/static/` (git-ignored, built by `make web` or the Dockerfile)
+- `frontend/` — Vue 3 + Vite + PrimeVue SPA (screens ≤640px get Control only, `?full=1` overrides): `src/views/{Control,Devices,Schedules,Apply}.vue`, one `api.js`; builds into `src/dali_iot/web/static/`
+- `Dockerfile`, `docker-compose.yml` — Node build stage + Python image; site file at `/data/site.yaml`, gateway from `DALI_IOT_URL`
 - `src/dali_iot/api_models.py` — GENERATED (`make models`) from a downloaded spec; never edit.
   Its header names the spec file, and so the firmware version, it came from
 - `spec/` — git-ignored; `dali-iot gateway spec` downloads `openapi-<firmware>.json` here
@@ -52,6 +56,9 @@ source sourceme                # uv sync --all-groups, activate
 uv run pytest -q
 uv run ruff check src tests && uv run ruff format --check src tests
 make docs                      # Sphinx -> docs/build/html, warnings are errors
+make web                       # npm ci && vite build -> src/dali_iot/web/static
+uv sync --extra web && dali-iot serve [--site PATH] [--host 0.0.0.0] [--port 8000]
+docker compose up -d --build   # needs .env with DALI_IOT_URL and data/site.yaml
 dali-iot gateway spec          # download the gateway's OpenAPI spec into spec/
 make models                    # regenerate api_models.py from the newest spec/openapi-*.json
 dali-iot gateway scan [--yes] [--save]   # find gateways on the LAN
@@ -91,3 +98,8 @@ dali-iot [--trace] dump | device on|off|recall|identify ADDR | zone on|off NAME 
   cannot detect that; `site check` does it over the bus by serial. `bus.py` is the only module that talks
   to the WebSocket and it sends queries and DTR writes only. The recovery is documented in `docs/site-file.md`.
 - Circadians and status queries are out of scope: never written, never compared.
+- The web UI owns the site file on its machine: Devices/Schedules tabs write the file
+  (`site.save`, atomic) and only Apply touches the gateway's configuration. Control
+  goes to the gateway live. No gateway id crosses the API: addresses and names only.
+- Web routes reuse the CLI's paths: `lookup.*` for names, `plan.build` for plan/apply,
+  `ScheduleSpec` as the request body. Never a second implementation of either.

@@ -13,3 +13,9 @@ dump/
 # Your installation: names and zones (dali-iot site init)
 site/
 *.local.yaml
+
+# Built by the frontend (npm run build / make web); the Docker image builds it
+src/dali_iot/web/static/
+frontend/node_modules/
+.env
+data/

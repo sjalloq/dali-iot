@@ -1,0 +1,10 @@
+.venv
+.git
+docs/build
+frontend/node_modules
+src/dali_iot/web/static
+spec
+dump
+site
+data
+**/__pycache__

@@ -9,6 +9,9 @@ prints its options. Global options:
 | `--trace` | print every HTTP request and reply to stderr |
 | `--timeout S` | seconds to wait for the gateway (default 5) |
 
+The gateway URL also comes from the `DALI_IOT_URL` environment variable when
+`--url` is not given, before the saved config.
+
 Commands never print gateway ids. Devices are DALI short addresses, `7` for
 line 0 or `1/7` for line 1; zones and sequences are names from the site
 file; groups are DALI group numbers 0 to 15.
@@ -81,3 +84,9 @@ Raw queries over the gateway's WebSocket; read-only.
 
 0 on success. 1 for a gateway or file error, and for `site check` when the
 file and the bus differ. 2 for a usage error.
+
+## serve
+
+| command | does |
+|---|---|
+| `serve [--site PATH] [--host H] [--port N]` | run the [web UI](web.md) over the site file; needs the `web` extra and a built frontend (`make web`) |

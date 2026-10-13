@@ -1,0 +1,14 @@
+# docker compose up -d
+# Put DALI_IOT_URL=http://<gateway-ip> in a .env next to this file, and your
+# site file at ./data/site.yaml (dali-iot site init writes one).
+services:
+  dali-iot:
+    build: .
+    image: dali-iot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DALI_IOT_URL: ${DALI_IOT_URL:?set DALI_IOT_URL=http://<gateway-ip> in .env}
+    volumes:
+      - ./data:/data

@@ -19,8 +19,8 @@ effect on the bus. One thing the REST API cannot tell you is *which* lamp
 sits at an address, so `dali-iot` also reads each device's serial number over
 the gateway's WebSocket, which is what makes readdressing survivable.
 
-Status: the command-line tool is complete for one gateway. A small web page
-for phone use is the next step.
+A small web page, phone-sized, drives lights and edits the site file for
+anyone in the house who will not open a terminal; see [Web UI](web.md).
 
 ```{toctree}
 :maxdepth: 2
@@ -30,5 +30,6 @@ commands
 examples
 bus
 site-file
+web
 gateway-api
 ```

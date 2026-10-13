@@ -16,3 +16,8 @@ models:
 	uv run datamodel-codegen --input $(SPEC) --input-file-type openapi \
 	    --output-model-type pydantic_v2.BaseModel --formatters ruff-format \
 	    --output src/dali_iot/api_models.py
+
+# Local web build: the SPA into src/dali_iot/web/static (dali-iot serve picks it up)
+.PHONY: web
+web:
+	cd frontend && npm ci && npm run build
