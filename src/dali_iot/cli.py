@@ -11,7 +11,7 @@ import click
 
 from . import bus as dalibus
 from . import check as checker
-from . import config, discover
+from . import config, discover, lookup
 from . import plan as planner
 from . import site as sitefile
 from .client import AUTOMATIONS, Client, off_features, on_features
@@ -361,25 +361,19 @@ def apply_cmd(ctx: click.Context, path: Path, prune: bool, yes: bool) -> None:
 
 
 def _device_at(c: Client, address: str) -> dict:
-    """The gateway record for an address reference like ``7`` or ``1/7``."""
     try:
-        line, addr = sitefile.parse_ref(int(address) if address.isdigit() else address)
+        return lookup.device_at(c, address)
     except ValueError as e:
         raise click.UsageError(str(e)) from None
-    for d in c.devices():
-        if int(d.get("line", 0)) == line and d.get("address") == addr:
-            return d
-    raise click.ClickException(f"nothing at line {line} A{addr} on the gateway")
+    except lookup.NotFound as e:
+        raise click.ClickException(str(e)) from None
 
 
 def _zone_named(c: Client, zone: str) -> dict:
-    zones = c.zones()
-    for z in zones:
-        if z.get("name") == zone:
-            return z
-    raise click.ClickException(
-        f"no zone named {zone!r} (have: {', '.join(str(z.get('name')) for z in zones)})"
-    )
+    try:
+        return lookup.zone_named(c, zone)
+    except lookup.NotFound as e:
+        raise click.ClickException(str(e)) from None
 
 
 def _fade_option(f):
@@ -456,13 +450,10 @@ def sequence() -> None:
 
 
 def _sequence_named(c: Client, name: str) -> dict:
-    seqs = c.automations("sequence")
-    for sq in seqs:
-        if sq.get("name") == name:
-            return sq
-    raise click.ClickException(
-        f"no sequence named {name!r} (have: {', '.join(str(x.get('name')) for x in seqs)})"
-    )
+    try:
+        return lookup.sequence_named(c, name)
+    except lookup.NotFound as e:
+        raise click.ClickException(str(e)) from None
 
 
 @sequence.command("run")
@@ -538,3 +529,26 @@ def broadcast_recall(ctx: click.Context, scene: int, fade: float) -> None:
     """Recall a scene everywhere."""
     feats = {"sceneWithFade": {"scene": scene, "fadeTime": fade}} if fade > 0 else {"scene": scene}
     _client(ctx).control_broadcast(feats, line=ctx.obj.get("line"))
+
+
+# --- web ---
+
+
+@main.command("serve")
+@click.option(
+    "--site", "path", type=click.Path(path_type=Path), default=sitefile.DEFAULT_PATH, show_default=True
+)
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address (0.0.0.0 for the LAN)")
+@click.option("--port", default=8000, show_default=True)
+@click.pass_context
+def serve(ctx: click.Context, path: Path, host: str, port: int) -> None:
+    """Run the web UI (needs the ``web`` extra)."""
+    try:
+        import uvicorn
+
+        from .web.app import create_app
+    except ImportError:
+        raise click.ClickException("the web UI needs the web extra: uv sync --extra web") from None
+    url, _ = _url(ctx)
+    app = create_app(path, url, make_client=lambda: _client(ctx))
+    uvicorn.run(app, host=host, port=port, log_level="info")

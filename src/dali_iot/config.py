@@ -1,4 +1,4 @@
-"""Where the gateway lives: ``--url`` beats ``~/.config/dali-iot/config.toml``."""
+"""Where the gateway lives: ``--url``, else ``DALI_IOT_URL``, else ``~/.config/dali-iot/config.toml``."""
 
 from __future__ import annotations
 
@@ -29,13 +29,16 @@ def save_url(url: str) -> Path:
 
 
 def resolve_url(arg_url: str | None) -> tuple[str, str]:
-    """Return ``(url, source)`` where source is ``arg`` or ``config``."""
+    """Return ``(url, source)`` where source is ``arg``, ``env`` or ``config``."""
     if arg_url:
         return arg_url.rstrip("/"), "arg"
+    env_url = os.environ.get("DALI_IOT_URL")
+    if env_url:
+        return env_url.rstrip("/"), "env"
     url = load().get("gateway", {}).get("url")
     if isinstance(url, str) and url:
         return url.rstrip("/"), "config"
     raise NoGatewayError(
-        "No gateway URL. Pass --url or run: dali-iot gateway set-url http://<gateway-ip>\n"
+        "No gateway URL. Pass --url, set DALI_IOT_URL, or run: dali-iot gateway set-url http://<gateway-ip>\n"
         f"Config file: {CONFIG_PATH}"
     )

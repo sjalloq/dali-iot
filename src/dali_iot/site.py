@@ -161,6 +161,28 @@ def load(path: Path = DEFAULT_PATH) -> Site:
         return Site.model_validate(yaml.safe_load(f) or {})
 
 
+HEADER = "# Names for this installation. Edit freely; check with: dali-iot plan\n"
+
+
+def to_yaml(site: Site) -> str:
+    """The site as YAML text, in the file's key order, without defaults.
+
+    The web UI writes the file through this; what it writes, ``load`` reads back
+    unchanged, and ``plan`` sees exactly what a hand-written file would give.
+    """
+    out: dict[str, Any] = site.model_dump(exclude_none=True, exclude_defaults=True)
+    out.setdefault("lines", {})
+    out.setdefault("zones", [])
+    return HEADER + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)
+
+
+def save(site: Site, path: Path = DEFAULT_PATH) -> None:
+    """Write the site file atomically (write a sibling, then rename)."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(to_yaml(site), encoding="utf-8")
+    tmp.replace(path)
+
+
 def from_gateway(
     devices: list[dict],
     zones: list[dict],
@@ -204,5 +226,4 @@ def from_gateway(
         out["triggers"] = [automation.trigger_from_gateway(r, refs, zone_names) for r in triggers]
     if sequences:
         out["sequences"] = [automation.sequence_from_gateway(r, refs, zone_names) for r in sequences]
-    header = "# Names for this installation. Edit freely; check with: dali-iot plan\n"
-    return header + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)
+    return HEADER + yaml.safe_dump(out, sort_keys=False, default_flow_style=None, width=100)
